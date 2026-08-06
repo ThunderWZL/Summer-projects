@@ -1,0 +1,11 @@
+model: yolo11n.pt
+data: construction-ppe.yaml
+epochs: 80
+imgsz: 640
+batch: 16
+device: 0
+workers: 8
+project: outputs/training
+name: construction-ppe-baseline
+seed: 42
+deterministic: true
