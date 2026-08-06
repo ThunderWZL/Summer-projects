@@ -1,0 +1,250 @@
+{
+  "valid": true,
+  "dataset_root": "ml\\data",
+  "source": {
+    "name": "Construction-PPE",
+    "version": "1.0.0",
+    "publisher": "Ultralytics",
+    "license": "AGPL-3.0",
+    "documentation_url": "https://docs.ultralytics.com/datasets/detect/construction-ppe/",
+    "download_url": "https://github.com/ultralytics/assets/releases/download/v0.0.0/construction-ppe.zip",
+    "downloaded_on": "2026-08-06",
+    "archive_sha256": "bef8dcb599aa4e9d9f5e602cb6fa7143d3c84d7f6a0ff40463d7f2a4c2632ccc",
+    "expected_image_counts": {
+      "train": 1132,
+      "val": 143,
+      "test": 141
+    },
+    "class_names": [
+      "helmet",
+      "gloves",
+      "vest",
+      "boots",
+      "goggles",
+      "none",
+      "Person",
+      "no_helmet",
+      "no_goggle",
+      "no_gloves",
+      "no_boots"
+    ]
+  },
+  "archive": {
+    "path": "ml\\data\\construction-ppe.zip",
+    "sha256": "bef8dcb599aa4e9d9f5e602cb6fa7143d3c84d7f6a0ff40463d7f2a4c2632ccc",
+    "matches_manifest": true
+  },
+  "dataset_fingerprint_sha256": "60fa3c2cefdcc1a966bff95cd88f1365827f74d27e690ed4f70aa4803d6a9ce7",
+  "summary": {
+    "images": 1416,
+    "instances": 11521,
+    "class_instances": {
+      "helmet": 1734,
+      "gloves": 1445,
+      "vest": 1618,
+      "boots": 1597,
+      "goggles": 518,
+      "none": 797,
+      "Person": 2245,
+      "no_helmet": 485,
+      "no_goggle": 411,
+      "no_gloves": 556,
+      "no_boots": 115
+    }
+  },
+  "splits": {
+    "train": {
+      "expected_images": 1132,
+      "observed_images": 1132,
+      "label_files": 1132,
+      "instances": 9098,
+      "class_instances": {
+        "helmet": 1341,
+        "gloves": 1146,
+        "vest": 1269,
+        "boots": 1235,
+        "goggles": 419,
+        "none": 651,
+        "Person": 1770,
+        "no_helmet": 400,
+        "no_goggle": 337,
+        "no_gloves": 442,
+        "no_boots": 88
+      },
+      "missing_labels": [],
+      "invalid_labels": []
+    },
+    "val": {
+      "expected_images": 143,
+      "observed_images": 143,
+      "label_files": 143,
+      "instances": 1172,
+      "class_instances": {
+        "helmet": 201,
+        "gloves": 136,
+        "vest": 171,
+        "boots": 151,
+        "goggles": 47,
+        "none": 81,
+        "Person": 239,
+        "no_helmet": 45,
+        "no_goggle": 41,
+        "no_gloves": 56,
+        "no_boots": 4
+      },
+      "missing_labels": [],
+      "invalid_labels": []
+    },
+    "test": {
+      "expected_images": 141,
+      "observed_images": 141,
+      "label_files": 141,
+      "instances": 1251,
+      "class_instances": {
+        "helmet": 192,
+        "gloves": 163,
+        "vest": 178,
+        "boots": 211,
+        "goggles": 52,
+        "none": 65,
+        "Person": 236,
+        "no_helmet": 40,
+        "no_goggle": 33,
+        "no_gloves": 58,
+        "no_boots": 23
+      },
+      "missing_labels": [],
+      "invalid_labels": []
+    }
+  },
+  "duplicates": {
+    "exact_groups": [],
+    "perceptual_groups": [
+      {
+        "hash": "a4339ba4b61b596c",
+        "paths": [
+          "images/train/image889.jpg",
+          "images/train/image890.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "b00f8fb39eccd860",
+        "paths": [
+          "images/train/image1059.jpg",
+          "images/train/image1061.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "cc663399cc663399",
+        "paths": [
+          "images/train/image124.jpg",
+          "images/train/image887.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "e04e3373d4b66e48",
+        "paths": [
+          "images/train/image80.jpg",
+          "images/train/image81.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "e55bec84956c1e13",
+        "paths": [
+          "images/test/image834.jpg",
+          "images/train/image833.jpg"
+        ],
+        "splits": [
+          "test",
+          "train"
+        ],
+        "cross_split": true
+      },
+      {
+        "hash": "e6599ce6891b1969",
+        "paths": [
+          "images/test/image1088.jpg",
+          "images/test/image1089.jpg"
+        ],
+        "splits": [
+          "test"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "e70f9eb4ac9899c0",
+        "paths": [
+          "images/train/image1033.jpg",
+          "images/train/image1034.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "f047f5f86679c410",
+        "paths": [
+          "images/train/image724.jpg",
+          "images/train/image725.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "f2dc5a194e1996cc",
+        "paths": [
+          "images/train/image598.jpg",
+          "images/train/image599.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "f3338c8cf3ab0c4c",
+        "paths": [
+          "images/train/image959.jpg",
+          "images/train/image960.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      },
+      {
+        "hash": "f5a4da1b634e2853",
+        "paths": [
+          "images/train/image575.jpg",
+          "images/train/image586.jpg"
+        ],
+        "splits": [
+          "train"
+        ],
+        "cross_split": false
+      }
+    ],
+    "cross_split_exact_groups": 0,
+    "cross_split_perceptual_groups": 1
+  },
+  "errors": []
+}
