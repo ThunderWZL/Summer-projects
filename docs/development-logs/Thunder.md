@@ -18,6 +18,10 @@
   * 完成：建立 FastAPI 健康接口与共享契约、React/Vite 入口和 YOLO 训练配置。
   * 实现：定义 PPE 候选、VLM 复核、调查结果、事件快照和 WebSocket 事件契约，为 VLM 保留 adapter 接口。
   * 验证：`cd frontend && npm run build`，通过；`cd backend && python -m pytest`，首次因系统没有 `python` 命令失败；将声明的开发依赖安装到 `/tmp` 后执行 `PYTHONPATH=/tmp/siteppe-backend-deps-20260806-2102 python3 -m pytest`，2 项测试通过；ML 未配置全局检查且尚未下载数据集，未运行训练。
+* 21:25 `chore(repo): 停止跟踪项目设计文档`
+  * 完成：将项目设计改为团队私下阅读的本地文档，不再上传仓库。
+  * 实现：在根目录忽略 `/project-design.md`，并从 Git 索引移除该文件，本地文件保留。
+  * 验证：`git check-ignore -v --no-index project-design.md`，命中根目录忽略规则；`git diff --check -- .gitignore docs/development-logs/Thunder.md`，通过；本提交仅修改仓库配置和文档跟踪状态，未运行代码测试。
 
 ### 问题与处理
 
@@ -26,4 +30,4 @@
 
 ### 后续计划
 
-* 开始共享契约评审，并在后续本机开发前建立正式项目环境。
+* 在本地完善项目设计文档，然后开始共享契约评审。
