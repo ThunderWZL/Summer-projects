@@ -1,0 +1,33 @@
+:root {
+  color: #e8edf2;
+  background: #101820;
+  font-family: Inter, "Noto Sans SC", system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 12vh 10vw;
+  background:
+    linear-gradient(120deg, rgb(10 20 28 / 92%), rgb(16 24 32 / 75%)),
+    repeating-linear-gradient(135deg, #f6b900 0 12px, #121a21 12px 24px);
+}
+
+.shell > * {
+  max-width: 760px;
+}
+
+.eyebrow {
+  color: #f6b900;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 8vw, 7rem);
+}
