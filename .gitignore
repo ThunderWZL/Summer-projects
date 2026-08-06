@@ -1,84 +1,130 @@
-# Python
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Python environments and packaging
+.venv/
 venv/
+env/
 ENV/
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+.eggs/
+wheels/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Jupyter
+.ipynb_checkpoints/
 
-# PyCharm
-.idea/
+# Frontend dependencies, caches, and generated builds
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.js.map
+frontend/vite.config.d.ts
 
-# VS Code
-.vscode/
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
 
-# Model weights and data
+# Runtime databases and vector indexes
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+chroma_db/
+*.chroma/
+
+# Datasets, demo media, and model artifacts
+/data/*
+!/data/.gitkeep
+!/data/README.md
+/datasets/
+/models/
+/ml/data/
+/ml/models/
 *.pt
 *.pth
 *.onnx
+*.engine
 *.weights
-models/weights/
-data/raw/
-data/processed/
-*.jpg
-*.png
-*.jpeg
-!docs/assets/*.png
-!docs/assets/*.jpg
+*.safetensors
+*.ckpt
+*.tflite
+*.mlmodel
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
+# Training, inference, and experiment outputs
+/runs/
+/ml/runs/
+/outputs/
+/wandb/
+/ml/wandb/
+/logs/
 *.log
-logs/
+reports/generated/*
+!reports/generated/.gitkeep
 
-# Environment variables
-.env
-.env.local
+# Archives and downloads
+/downloads/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+__MACOSX/
 
 # Temporary files
 *.tmp
+*.temp
 *.bak
 *.swp
+*.swo
 *~
 
-# OS
-.DS_Store
-Thumbs.db
+# Local agent tooling; keep only the repository-level AGENTS.md
+/.agents/
+/.codex/
+/.claude/
+/skills-lock.json
+/rules.md
+/codex-agent-harness-design.md
 
-# Chroma vector database
-chroma_db/
-*.chroma
-
-# Reports and outputs
-outputs/
-reports/generated/*.md
-!reports/generated/.gitkeep
-
-# Large files
-*.zip
-*.tar.gz
-*.rar
+# Local course and research source materials
+/Requirements of class/
+/课件和代码和上课逐字稿和总结文件/
+/src/data/
+/project-design.html
+/调研报告.md
+research/wayfinder_construction_ppe_final_audit.md
+project-design.md
