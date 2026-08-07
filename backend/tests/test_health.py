@@ -24,10 +24,24 @@ def test_shared_contract_schema_is_exposed() -> None:
     response = asyncio.run(get("/api/v1/contracts/schema"))
 
     assert response.status_code == 200
-    assert set(response.json()) == {
+    assert {
         "CandidateEvidence",
         "VlmReviewResult",
         "InvestigationResult",
         "CaseSnapshot",
         "AnalysisEvent",
-    }
+    } <= set(response.json())
+
+
+def test_case_command_schemas_are_exposed() -> None:
+    response = asyncio.run(get("/api/v1/contracts/schema"))
+
+    assert {
+        "SubmitFacts",
+        "ApproveRectification",
+        "RejectCase",
+        "RequestReinvestigation",
+        "SubmitRectificationEvidence",
+        "ApproveClosure",
+        "RejectRecheck",
+    } <= set(response.json())

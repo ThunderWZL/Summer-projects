@@ -44,6 +44,10 @@
   * 完成：将本地 CrossGuard 快速基线脚本排除在版本控制之外，避免误提交无关实验文件。
   * 实现：仅忽略 `scripts/crossguard_quick_baseline.py`，保留项目后续纳入其他脚本的能力。
   * 验证：`git check-ignore -v --no-index scripts/crossguard_quick_baseline.py`，通过；`git diff --check -- .gitignore`，通过；本次仅修改忽略配置，未运行代码测试或构建。
+* 15:32 `feat(contracts): 冻结共享事件与命令契约`
+  * 完成：补齐候选业务时间、VLM 模型追溯信息、事件人工数据与时间线，并定义七种人工命令契约。
+  * 实现：为候选时间窗口、跨对象身份、时区和 JSON 消息增加校验，通过契约发现接口公开事件与命令 Schema。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，24 项测试通过；`git diff --check`，通过。
 
 ### 问题与处理
 
@@ -51,4 +55,4 @@
 
 ### 后续计划
 
-* 完成项目骨架分支合并，从最新远程主分支创建共享契约与状态机任务分支。
+* 实现并验证 `CaseWorkflow` 的合法状态转换、角色权限、证据要求和乐观锁版本检查。
