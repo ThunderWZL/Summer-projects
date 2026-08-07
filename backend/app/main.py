@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.contracts import SHARED_CONTRACTS
+from app.contracts import SHARED_COMMANDS, SHARED_CONTRACTS
 
 
 app = FastAPI(
@@ -19,5 +19,5 @@ async def health() -> dict[str, str]:
 async def contract_schema() -> dict[str, object]:
     return {
         model.__name__: model.model_json_schema()
-        for model in SHARED_CONTRACTS
+        for model in SHARED_CONTRACTS + SHARED_COMMANDS
     }
