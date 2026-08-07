@@ -25,7 +25,7 @@
 
 ### 当日目标
 
-* 完成 `W-02` YOLO11n 训练、固定测试集评估和失败样例分析，形成可复现的结构化训练报告。
+* 完成 `W-02` YOLO11n 训练评估，并实现 `W-03` 限速视频推理、ByteTrack 匿名跟踪和叠加画面。
 
 ### 开发记录
 
@@ -33,12 +33,17 @@
   * 完成：在物理 GPU 5 上完成 YOLO11n 80 epochs 训练，以最佳权重评估官方固定测试集，并生成 12 个高错误量失败样例；测试集总体 Precision 为 0.590、Recall 为 0.541、mAP50 为 0.537、mAP50-95 为 0.264。
   * 实现：增加按类别和 IoU 一对一匹配的失败分析命令，记录 FP、FN、排序失败样例和渲染图；生成包含环境、配置、训练指标、逐类测试指标、权重哈希与产物索引的结构化报告，并将视频、权重和运行产物保留在 Git 忽略目录。
   * 验证：`CUDA_VISIBLE_DEVICES=5 yolo detect train model=yolo11n.pt data=work3-dataset.yaml epochs=80 imgsz=640 batch=16 device=0 workers=8 project=outputs/training name=construction-ppe-baseline seed=42 deterministic=True`，80 epochs 完成；`CUDA_VISIBLE_DEVICES=5 yolo detect val model=outputs/training/construction-ppe-baseline/weights/best.pt data=work3-dataset.yaml split=test imgsz=640 batch=16 device=0 workers=8 plots=True project=outputs/evaluation name=construction-ppe-test`，固定测试集 141 张图片、1251 个实例评估完成；`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml/tests -v`，5 项测试通过；`Get-FileHash -Algorithm SHA256 ml\data\w02-artifacts\outputs\training\construction-ppe-baseline\weights\best.pt`，哈希与报告一致且 12 张失败样例完整。ML 全局 lint 和构建命令未配置，未运行。
+* 22:00 `feat(ml): 实现视频推理与匿名跟踪`
+  * 完成：实现按目标帧率稳定采样的视频推理器，使用 YOLO11n 和 ByteTrack 输出原始像素坐标检测、匿名人员轨迹 ID 和叠加画面。
+  * 实现：使用无累积舍入误差的时间戳采样，以 `persist=True` 保留 ByteTrack 状态，支持运行时选择 GPU、推理帧率、播放倍速、置信度和最大推理帧数；补充 `lap` 跟踪依赖。
+  * 验证：`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml\tests -v`，10 项测试通过；`.\ml\.venv\Scripts\python.exe -m py_compile ml\video_inference.py`，通过；`python -m pytest tests\test_contracts.py tests\domain\test_case_workflow.py`，65 项后端契约与状态机测试通过；`CUDA_VISIBLE_DEVICES=1 ./conda/bin/python video_inference.py 'How many OSHA violations_ _ r_funny.mp4' --weights outputs/training/construction-ppe-baseline/weights/best.pt --fps 5 --device 0`，服务器 GPU 完整处理 12.4 秒、372 帧公开视频，实际推理 62 个采样帧通过，30 FPS 源视频每 6 帧采样且连续保留匿名轨迹 ID。完整后端 `python -m pytest` 因本机 Python 3.13 环境缺少 `fastapi` 而在健康接口测试收集阶段停止；ML 全局 lint 和构建命令未配置，未运行。
 
 ### 问题与处理
 
 * Ultralytics 在线 AMP 探测因服务器访问 GitHub 时证书主机名不匹配而跳过；框架按离线模式继续启用 AMP，训练损失和指标正常，无 NaN 或 OOM。
 * `no_boots` 在固定测试集仅有 23 个实例且 mAP50-95 为 0.00708；在后续视频候选中保留该类别，但必须采用保守阈值并交由下游复核。
+* ByteTrack 首次运行发现 work3 隔离环境缺少 `lap`，且服务器 PyPI 证书主机名不匹配；从开发机下载 CPython 3.10 Linux wheel，上传后在 work3 环境离线安装，实际跟踪验证通过。
 
 ### 后续计划
 
-* 进入 `W-03`，使用已下载公开视频实现限速读帧、YOLO 推理、ByteTrack 匿名跟踪和叠加画面。
+* 待项目负责人将 `feat/video-inference-tracking` 合并至 `dev` 并完成集成测试后，从最新 `dev` 创建新分支进入 `W-04` 候选聚合。
