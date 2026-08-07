@@ -28,18 +28,61 @@ class PpeType(str, Enum):
     VEST = "vest"
 
 
+class EvidenceKind(str, Enum):
+    NEGATIVE_CLASS_DETECTION = "NEGATIVE_CLASS_DETECTION"
+    MISSING_POSITIVE_ASSOCIATION = "MISSING_POSITIVE_ASSOCIATION"
+
+
+class FrameRole(str, Enum):
+    BEFORE = "BEFORE"
+    REPRESENTATIVE = "REPRESENTATIVE"
+    AFTER = "AFTER"
+
+
 class BoundingBox(ContractModel):
     x1: float = Field(ge=0)
     y1: float = Field(ge=0)
     x2: float = Field(ge=0)
     y2: float = Field(ge=0)
 
+    @model_validator(mode="after")
+    def edges_must_define_an_area(self) -> BoundingBox:
+        if self.x2 <= self.x1:
+            raise ValueError("x2 must be greater than x1")
+        if self.y2 <= self.y1:
+            raise ValueError("y2 must be greater than y1")
+        return self
+
 
 class EvidenceFrame(ContractModel):
     timestamp_ms: int = Field(ge=0)
     image_url: str
+    image_width: int = Field(gt=0)
+    image_height: int = Field(gt=0)
+    frame_role: FrameRole
     person_box: BoundingBox
-    ppe_box: BoundingBox | None = None
+    observation_box: BoundingBox | None = None
+    observation_confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def boxes_must_match_the_original_frame(self) -> EvidenceFrame:
+        for field_name, box in (
+            ("person_box", self.person_box),
+            ("observation_box", self.observation_box),
+        ):
+            if box is None:
+                continue
+            if box.x2 > self.image_width:
+                raise ValueError(f"{field_name} exceeds image_width")
+            if box.y2 > self.image_height:
+                raise ValueError(f"{field_name} exceeds image_height")
+        has_box = self.observation_box is not None
+        has_confidence = self.observation_confidence is not None
+        if has_box != has_confidence:
+            raise ValueError(
+                "observation_box and observation_confidence must be set together"
+            )
+        return self
 
 
 class CandidateEvidence(ContractModel):
@@ -48,7 +91,15 @@ class CandidateEvidence(ContractModel):
     camera_id: str
     person_track_id: str
     ppe_type: PpeType
+    evidence_kind: EvidenceKind
     confidence: float = Field(ge=0, le=1)
+    model_name: str = Field(min_length=1)
+    model_version: str | None = None
+    weights_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-fA-F]{64}$"
+    )
+    aggregation_method: str = Field(min_length=1)
+    aggregation_parameters: dict[str, JsonValue]
     occurred_at: AwareDatetime
     first_seen_ms: int = Field(ge=0)
     last_seen_ms: int = Field(ge=0)
@@ -63,6 +114,44 @@ class CandidateEvidence(ContractModel):
         if first_seen_ms is not None and value < first_seen_ms:
             raise ValueError("last_seen_ms must not precede first_seen_ms")
         return value
+
+    @model_validator(mode="after")
+    def evidence_must_be_traceable_and_consistent(self) -> CandidateEvidence:
+        if self.model_version is None and self.weights_sha256 is None:
+            raise ValueError("model_version or weights_sha256 is required")
+
+        timestamps = [frame.timestamp_ms for frame in self.frames]
+        if any(
+            current >= following
+            for current, following in zip(timestamps, timestamps[1:])
+        ):
+            raise ValueError("frame timestamps must be strictly increasing")
+
+        representatives = [
+            frame
+            for frame in self.frames
+            if frame.frame_role is FrameRole.REPRESENTATIVE
+        ]
+        if len(representatives) != 1:
+            raise ValueError("candidate must contain exactly one REPRESENTATIVE frame")
+        representative = representatives[0]
+        if not (
+            self.first_seen_ms
+            <= representative.timestamp_ms
+            <= self.last_seen_ms
+        ):
+            raise ValueError("representative frame must be inside violation window")
+
+        if self.evidence_kind is EvidenceKind.NEGATIVE_CLASS_DETECTION:
+            if representative.observation_box is None:
+                raise ValueError(
+                    "negative detection requires a representative observation"
+                )
+        elif any(frame.observation_box is not None for frame in self.frames):
+            raise ValueError(
+                "missing positive association must not contain observations"
+            )
+        return self
 
 
 class VlmVerdict(str, Enum):

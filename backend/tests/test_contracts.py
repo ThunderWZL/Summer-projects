@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import datetime
 
 import pytest
@@ -26,7 +27,12 @@ def candidate_data() -> dict[str, object]:
         "camera_id": "CAM-01",
         "person_track_id": "track-17",
         "ppe_type": "helmet",
+        "evidence_kind": "NEGATIVE_CLASS_DETECTION",
         "confidence": 0.91,
+        "model_name": "ppe-yolo",
+        "weights_sha256": "a" * 64,
+        "aggregation_method": "weighted_mean",
+        "aggregation_parameters": {"minimum_frames": 3},
         "occurred_at": "2026-08-07T10:31:24+08:00",
         "first_seen_ms": 1_000,
         "last_seen_ms": 2_000,
@@ -34,7 +40,17 @@ def candidate_data() -> dict[str, object]:
             {
                 "timestamp_ms": 1_500,
                 "image_url": "/evidence/candidate-01/key.jpg",
+                "image_width": 1920,
+                "image_height": 1080,
+                "frame_role": "REPRESENTATIVE",
                 "person_box": {"x1": 10, "y1": 20, "x2": 110, "y2": 220},
+                "observation_box": {
+                    "x1": 30,
+                    "y1": 20,
+                    "x2": 80,
+                    "y2": 60,
+                },
+                "observation_confidence": 0.93,
             }
         ],
     }
@@ -69,6 +85,85 @@ def test_candidate_rejects_a_reversed_playback_window() -> None:
     data["last_seen_ms"] = 1_000
 
     with pytest.raises(ValidationError, match="last_seen_ms"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_candidate_rejects_a_box_outside_the_original_frame() -> None:
+    data = candidate_data()
+    data["frames"][0]["person_box"]["x2"] = 2_000
+
+    with pytest.raises(ValidationError, match="image_width"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_candidate_rejects_a_box_with_reversed_edges() -> None:
+    data = candidate_data()
+    data["frames"][0]["observation_box"]["x2"] = 20
+
+    with pytest.raises(ValidationError, match="x2 must be greater than x1"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_negative_detection_requires_a_real_representative_observation() -> None:
+    data = candidate_data()
+    data["frames"][0]["observation_box"] = None
+    data["frames"][0]["observation_confidence"] = None
+
+    with pytest.raises(ValidationError, match="representative observation"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_context_frame_observation_and_confidence_must_be_recorded_together() -> None:
+    data = candidate_data()
+    before = deepcopy(data["frames"][0])
+    before["timestamp_ms"] = 500
+    before["frame_role"] = "BEFORE"
+    before["observation_confidence"] = None
+    data["frames"].insert(0, before)
+
+    with pytest.raises(ValidationError, match="observation_confidence"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_missing_positive_association_forbids_observation_boxes() -> None:
+    data = candidate_data()
+    data["evidence_kind"] = "MISSING_POSITIVE_ASSOCIATION"
+
+    with pytest.raises(ValidationError, match="must not contain observations"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_candidate_requires_one_representative_frame() -> None:
+    data = candidate_data()
+    data["frames"][0]["frame_role"] = "BEFORE"
+
+    with pytest.raises(ValidationError, match="exactly one REPRESENTATIVE"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_candidate_rejects_unsorted_or_duplicate_frame_timestamps() -> None:
+    data = candidate_data()
+    after = deepcopy(data["frames"][0])
+    after["frame_role"] = "AFTER"
+    data["frames"].insert(0, after)
+
+    with pytest.raises(ValidationError, match="strictly increasing"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_representative_frame_must_be_inside_the_violation_window() -> None:
+    data = candidate_data()
+    data["frames"][0]["timestamp_ms"] = 2_500
+
+    with pytest.raises(ValidationError, match="violation window"):
+        CandidateEvidence.model_validate(data)
+
+
+def test_candidate_requires_model_version_or_weights_digest() -> None:
+    data = candidate_data()
+    data.pop("weights_sha256")
+
+    with pytest.raises(ValidationError, match="model_version or weights_sha256"):
         CandidateEvidence.model_validate(data)
 
 
