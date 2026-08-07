@@ -24,18 +24,21 @@ git branch --show-current
 ### 创建任务分支
 
 * 每个线下分配的任务使用一个独立的短期任务分支。
-* 禁止直接在 `main` 上开发。
-* 从最新的远程 `main` 创建任务分支。
+* `dev` 是团队集成测试分支，`main` 是测试通过后的稳定发布分支。
+* 禁止直接在 `dev` 或 `main` 上开发。
+* 从最新的远程 `dev` 创建任务分支。
 
 依次执行：
 
 ```bash
 git fetch origin
-git switch main
-git pull --ff-only origin main
+git switch dev
+git pull --ff-only origin dev
 git switch -c <type>/<slug>
 ```
 
+* 创建任务分支前确认 `origin/dev` 已存在。
+* `origin/dev` 不存在时停止创建任务分支，并联系项目负责人从最新的 `main` 初始化 `dev`。
 * 根据任务类型使用 `feat`、`fix` 或 `chore` 作为 `<type>`。
 * 使用简短的小写英文和连字符编写 `<slug>`。
 * 创建或切换分支前确认工作区没有未提交修改。
@@ -285,30 +288,42 @@ git push origin <task-branch>
 git fetch origin
 ```
 
-* 检查 `origin/main` 是否已经前进。
-* 当 `origin/main` 包含新提交时，将其合并到当前任务分支。
+* 检查 `origin/dev` 是否已经前进。
+* 当 `origin/dev` 包含新提交时，将其合并到当前任务分支。
 * 解决冲突后重新运行相关测试、静态检查和构建命令。
 * 无法判断冲突处理方式时停止合并，并联系相关成员确认。
 
-### 验收与合并
+### 集成验收与发布
 
-* 禁止由 Agent 根据测试结果自行认定任务已经验收。
-* 只有任务负责人明确确认验收通过后才允许合并。
-* 合并前在已经同步 `origin/main` 的任务分支上运行完整测试和构建。
+* 任务分支开发完成后先合并到 `dev`，用于项目负责人集成测试。
+* 合并到 `dev` 不代表最终验收通过，也不授权合并到 `main`。
+* 合并前在已经同步 `origin/dev` 的任务分支上运行完整测试和构建。
+* 合并前确认任务分支已经推送。
 
-仅在任务负责人明确确认验收且完整检查通过后执行：
+任务分支完整检查通过后执行：
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git merge --no-ff <task-branch>
+git push origin dev
+```
+
+* 推送 `dev` 被拒绝时，重新获取远程修改并逐项解决冲突。
+* 项目负责人在 `dev` 完成测试并明确确认验收后，由项目负责人将 `dev` 合并到 `main`。
+* Agent 禁止合并或推送 `main`；只有项目负责人执行正式发布操作。
+
+项目负责人验收通过后执行：
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git merge --no-ff <task-branch>
+git merge --no-ff dev
 git push origin main
 ```
 
-* 合并前确认任务分支已经推送。
-* 任务分支完整测试和构建通过后再合并并推送 `main`。
-* 推送 `main` 被拒绝时，重新拉取远程修改并解决冲突。
-* 禁止通过强制推送覆盖远程 `main`。
+* 推送 `main` 被拒绝时，由项目负责人重新拉取远程修改并解决冲突。
+* 禁止通过强制推送覆盖远程 `dev` 或 `main`。
 
 ### 禁止操作
 
