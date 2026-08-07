@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class ContractModel(BaseModel):
@@ -40,9 +49,20 @@ class CandidateEvidence(ContractModel):
     person_track_id: str
     ppe_type: PpeType
     confidence: float = Field(ge=0, le=1)
+    occurred_at: AwareDatetime
     first_seen_ms: int = Field(ge=0)
     last_seen_ms: int = Field(ge=0)
     frames: list[EvidenceFrame] = Field(min_length=1)
+
+    @field_validator("last_seen_ms")
+    @classmethod
+    def end_must_not_precede_start(
+        cls, value: int, info: ValidationInfo
+    ) -> int:
+        first_seen_ms = info.data.get("first_seen_ms")
+        if first_seen_ms is not None and value < first_seen_ms:
+            raise ValueError("last_seen_ms must not precede first_seen_ms")
+        return value
 
 
 class VlmVerdict(str, Enum):
@@ -69,6 +89,9 @@ class VlmReviewResult(ContractModel):
     evidence_timestamps_ms: list[int]
     reason: str
     model_name: str
+    model_provider: str
+    model_parameters: dict[str, JsonValue]
+    reviewed_at: AwareDatetime
 
 
 class CaseStatus(str, Enum):
@@ -83,6 +106,70 @@ class CaseStatus(str, Enum):
     RECTIFICATION_OPEN = "RECTIFICATION_OPEN"
     RECHECK_PENDING = "RECHECK_PENDING"
     CLOSED = "CLOSED"
+
+
+class HumanCaseCommand(ContractModel):
+    actor_id: str = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=1)
+
+
+class SubmitFacts(HumanCaseCommand):
+    command_type: Literal["SUBMIT_FACTS"] = "SUBMIT_FACTS"
+    facts: dict[str, JsonValue] = Field(min_length=1)
+
+
+class ApproveRectification(HumanCaseCommand):
+    command_type: Literal["APPROVE_RECTIFICATION"] = "APPROVE_RECTIFICATION"
+    responsible_party_id: str = Field(min_length=1)
+    rectification_due_at: AwareDatetime
+
+
+class RectificationEvidence(ContractModel):
+    evidence_id: str = Field(min_length=1)
+    image_url: str = Field(min_length=1)
+    captured_at: AwareDatetime
+    note: str | None = None
+
+
+class SubmitRectificationEvidence(HumanCaseCommand):
+    command_type: Literal["SUBMIT_RECTIFICATION_EVIDENCE"] = (
+        "SUBMIT_RECTIFICATION_EVIDENCE"
+    )
+    description: str = Field(min_length=1)
+    evidence: list[RectificationEvidence] = Field(min_length=1)
+
+
+class RejectCase(HumanCaseCommand):
+    command_type: Literal["REJECT_CASE"] = "REJECT_CASE"
+
+
+class RequestReinvestigation(HumanCaseCommand):
+    command_type: Literal["REQUEST_REINVESTIGATION"] = (
+        "REQUEST_REINVESTIGATION"
+    )
+
+
+class ApproveClosure(HumanCaseCommand):
+    command_type: Literal["APPROVE_CLOSURE"] = "APPROVE_CLOSURE"
+    recheck_conclusion: str = Field(min_length=1)
+
+
+class RejectRecheck(HumanCaseCommand):
+    command_type: Literal["REJECT_RECHECK"] = "REJECT_RECHECK"
+    recheck_conclusion: str = Field(min_length=1)
+
+
+CaseCommand = Annotated[
+    SubmitFacts
+    | ApproveRectification
+    | RejectCase
+    | RequestReinvestigation
+    | SubmitRectificationEvidence
+    | ApproveClosure
+    | RejectRecheck,
+    Field(discriminator="command_type"),
+]
 
 
 class Citation(ContractModel):
@@ -113,6 +200,20 @@ class InvestigationResult(ContractModel):
     tool_trace: list[str]
 
 
+class ActorRole(str, Enum):
+    SITE_SAFETY_OFFICER = "SITE_SAFETY_OFFICER"
+    PROJECT_SAFETY_REVIEWER = "PROJECT_SAFETY_REVIEWER"
+
+
+class CaseTransition(ContractModel):
+    from_status: CaseStatus
+    to_status: CaseStatus
+    actor_id: str | None = None
+    actor_role: ActorRole | None = None
+    reason: str = Field(min_length=1)
+    occurred_at: AwareDatetime
+
+
 class CaseSnapshot(ContractModel):
     case_id: str
     session_id: str
@@ -124,10 +225,37 @@ class CaseSnapshot(ContractModel):
     candidate: CandidateEvidence
     vlm_review: VlmReviewResult | None = None
     investigation: InvestigationResult | None = None
+    human_facts: dict[str, JsonValue] = Field(default_factory=dict)
     rectification_responsible_party_id: str | None = None
     rectification_due_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    rectification_evidence: list[RectificationEvidence] = Field(
+        default_factory=list
+    )
+    rectification_description: str | None = None
+    recheck_conclusion: str | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    transitions: list[CaseTransition] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def identity_must_match_candidate(self) -> CaseSnapshot:
+        compared_fields = (
+            "session_id",
+            "camera_id",
+            "person_track_id",
+            "ppe_type",
+        )
+        mismatched = [
+            field_name
+            for field_name in compared_fields
+            if getattr(self, field_name) != getattr(self.candidate, field_name)
+        ]
+        if mismatched:
+            raise ValueError(
+                "case identity must match candidate fields: "
+                + ", ".join(mismatched)
+            )
+        return self
 
 
 class AnalysisEventType(str, Enum):
@@ -143,10 +271,10 @@ class AnalysisEvent(ContractModel):
     event_id: str
     event_type: AnalysisEventType
     session_id: str
-    occurred_at: datetime
+    occurred_at: AwareDatetime
     case_id: str | None = None
     playback_ms: int = Field(ge=0)
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 SHARED_CONTRACTS = (
@@ -155,4 +283,14 @@ SHARED_CONTRACTS = (
     InvestigationResult,
     CaseSnapshot,
     AnalysisEvent,
+)
+
+SHARED_COMMANDS = (
+    SubmitFacts,
+    ApproveRectification,
+    RejectCase,
+    RequestReinvestigation,
+    SubmitRectificationEvidence,
+    ApproveClosure,
+    RejectRecheck,
 )
