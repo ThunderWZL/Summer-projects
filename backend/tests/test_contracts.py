@@ -9,8 +9,15 @@ from app.contracts import (
     ApproveClosure,
     ApproveRectification,
     CandidateEvidence,
+    CandidateCreatedPayload,
     CaseCommand,
+    CaseCommandResponse,
+    CaseDetailResponse,
+    CaseListResponse,
     CaseSnapshot,
+    ErrorResponse,
+    InvestigationResult,
+    RectificationRecommendation,
     RejectCase,
     RejectRecheck,
     RequestReinvestigation,
@@ -207,6 +214,158 @@ def test_case_rejects_a_timestamp_without_timezone() -> None:
         CaseSnapshot.model_validate(data)
 
 
+def test_case_rejects_a_rectification_deadline_without_timezone() -> None:
+    data = case_data()
+    data["rectification_due_at"] = "2026-08-08T18:00:00"
+
+    with pytest.raises(ValidationError, match="rectification_due_at"):
+        CaseSnapshot.model_validate(data)
+
+
+def test_rectification_recommendation_requires_an_aware_deadline() -> None:
+    with pytest.raises(ValidationError, match="due_at"):
+        RectificationRecommendation.model_validate(
+            {
+                "responsible_party_id": "team-01",
+                "due_at": "2026-08-08T18:00:00",
+                "reason": "尽快完成整改",
+            }
+        )
+
+
+def test_investigation_facts_accept_only_json_values() -> None:
+    with pytest.raises(ValidationError, match="facts"):
+        InvestigationResult.model_validate(
+            {
+                "facts": {"invalid": {"not", "json"}},
+                "conflicts": [],
+                "missing_fields": [],
+                "hazards": [],
+                "required_ppe": ["helmet"],
+                "citations": [],
+                "tool_trace": [],
+            }
+        )
+
+
+def test_case_list_response_exposes_backend_computed_fields() -> None:
+    response = CaseListResponse.model_validate(
+        {
+            "items": [
+                {
+                    "case_id": "case-01",
+                    "ppe_type": "helmet",
+                    "status": "RECTIFICATION_OPEN",
+                    "version": 4,
+                    "occurred_at": "2026-08-07T10:31:24+08:00",
+                    "updated_at": "2026-08-07T11:00:00+08:00",
+                    "camera_id": "CAM-01",
+                    "camera_name": "东门摄像头",
+                    "zone_id": "zone-01",
+                    "zone_name": "东门作业区",
+                    "responsible_party_id": "team-01",
+                    "responsible_party_name": "土建一班",
+                    "rectification_due_at": "2026-08-08T18:00:00+08:00",
+                    "overdue": False,
+                    "urgency": "HIGH",
+                }
+            ],
+            "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "total_items": 1,
+                "total_pages": 1,
+            },
+            "statistics": {
+                "open_count": 1,
+                "needs_human_facts_count": 0,
+                "pending_review_count": 0,
+                "rectification_open_count": 1,
+                "recheck_pending_count": 0,
+                "overdue_count": 0,
+                "average_closure_minutes": None,
+                "top_repeat_risk": {
+                    "zone_id": "zone-01",
+                    "zone_name": "东门作业区",
+                    "ppe_type": "helmet",
+                    "case_count": 3,
+                },
+            },
+        }
+    )
+
+    assert response.items[0].urgency.value == "HIGH"
+    assert response.statistics.top_repeat_risk.case_count == 3
+
+
+def test_case_detail_uses_typed_submissions_and_unified_timeline() -> None:
+    response = CaseDetailResponse.model_validate(
+        {
+            "snapshot": case_data(),
+            "camera_name": "东门摄像头",
+            "zone_id": "zone-01",
+            "zone_name": "东门作业区",
+            "zone_type": "HIGH_RISK",
+            "video_id": "video-01",
+            "video_title": "东门上午巡检",
+            "responsible_party_name": None,
+            "responsible_party_kind": None,
+            "citations": [],
+            "human_submissions": [
+                {
+                    "submission_id": "submission-01",
+                    "case_id": "case-01",
+                    "submission_type": "FACTS",
+                    "actor_id": "officer-01",
+                    "actor_name": "安全员甲",
+                    "actor_role": "SITE_SAFETY_OFFICER",
+                    "reason": "补充作业内容",
+                    "created_at": "2026-08-07T10:40:00+08:00",
+                    "facts": {"task": "cutting"},
+                },
+                {
+                    "submission_id": "submission-02",
+                    "case_id": "case-01",
+                    "submission_type": "RECTIFICATION_EVIDENCE",
+                    "actor_id": "officer-01",
+                    "actor_name": "安全员甲",
+                    "actor_role": "SITE_SAFETY_OFFICER",
+                    "reason": "提交整改证据",
+                    "created_at": "2026-08-07T12:00:00+08:00",
+                    "description": "已补戴安全帽",
+                    "evidence": [
+                        {
+                            "evidence_id": "evidence-01",
+                            "image_url": "/evidence/after.jpg",
+                            "captured_at": "2026-08-07T11:58:00+08:00",
+                        }
+                    ],
+                },
+            ],
+            "timeline": [
+                {
+                    "timeline_item_id": "candidate-01",
+                    "source": "YOLO",
+                    "action": "CANDIDATE_CREATED",
+                    "from_status": None,
+                    "to_status": "YOLO_CANDIDATE",
+                    "actor_id": None,
+                    "actor_name": None,
+                    "actor_role": None,
+                    "reason": None,
+                    "occurred_at": "2026-08-07T10:31:24+08:00",
+                }
+            ],
+        }
+    )
+
+    assert response.human_submissions[0].submission_type == "FACTS"
+    assert response.human_submissions[1].submission_type == (
+        "RECTIFICATION_EVIDENCE"
+    )
+    assert response.timeline[0].source.value == "YOLO"
+
+
 def test_analysis_event_rejects_non_json_payload() -> None:
     with pytest.raises(ValidationError, match="payload"):
         AnalysisEvent.model_validate(
@@ -222,6 +381,151 @@ def test_analysis_event_rejects_non_json_payload() -> None:
         )
 
 
+def test_analysis_event_uses_the_payload_for_its_event_type() -> None:
+    event = AnalysisEvent.model_validate(
+        {
+            "event_id": "event-01",
+            "sequence": 1,
+            "event_type": "CANDIDATE_CREATED",
+            "session_id": "session-01",
+            "occurred_at": "2026-08-07T10:31:24+08:00",
+            "case_id": "case-01",
+            "playback_ms": 1_500,
+            "payload": {
+                "candidate_id": "candidate-01",
+                "ppe_type": "helmet",
+                "confidence": 0.91,
+                "candidate_occurred_at": "2026-08-07T10:31:24+08:00",
+                "person_track_id": "track-17",
+            },
+        }
+    )
+
+    assert type(event.payload) is CandidateCreatedPayload
+
+
+@pytest.mark.parametrize(
+    ("event_type", "case_id", "payload", "expected_payload_type"),
+    [
+        (
+            "SESSION_PROGRESS",
+            None,
+            {
+                "stage": "INFERENCING",
+                "progress": 0.5,
+                "message": None,
+                "inference_fps": 24.0,
+                "candidate_count": 2,
+                "case_count": 1,
+            },
+            "SessionProgressPayload",
+        ),
+        (
+            "SESSION_FAILED",
+            None,
+            {
+                "error_code": "MODEL_LOAD_FAILED",
+                "message": "无法加载模型",
+                "retryable": False,
+            },
+            "SessionFailedPayload",
+        ),
+        (
+            "VLM_REVIEWED",
+            "case-01",
+            {
+                "verdict": "CONFIRMED",
+                "evidence_sufficient": True,
+                "reason": "证据充分",
+                "status": "VLM_REVIEWED",
+                "version": 2,
+            },
+            "VlmReviewedPayload",
+        ),
+        (
+            "CASE_UPDATED",
+            "case-01",
+            {
+                "status": "PENDING_REVIEW",
+                "version": 3,
+                "updated_at": "2026-08-07T10:35:00+08:00",
+                "action": "INVESTIGATION_COMPLETED",
+            },
+            "CaseUpdatedPayload",
+        ),
+        (
+            "SESSION_FINISHED",
+            None,
+            {"candidate_count": 3, "case_count": 2},
+            "SessionFinishedPayload",
+        ),
+    ],
+)
+def test_analysis_event_accepts_each_fixed_payload(
+    event_type: str,
+    case_id: str | None,
+    payload: dict[str, object],
+    expected_payload_type: str,
+) -> None:
+    event = AnalysisEvent.model_validate(
+        {
+            "event_id": f"event-{event_type.lower()}",
+            "sequence": 1,
+            "event_type": event_type,
+            "session_id": "session-01",
+            "occurred_at": "2026-08-07T10:31:24+08:00",
+            "case_id": case_id,
+            "playback_ms": 1_500,
+            "payload": payload,
+        }
+    )
+
+    assert type(event.payload).__name__ == expected_payload_type
+
+
+def test_analysis_event_rejects_a_payload_for_another_event_type() -> None:
+    with pytest.raises(ValidationError, match="event_type"):
+        AnalysisEvent.model_validate(
+            {
+                "event_id": "event-01",
+                "sequence": 1,
+                "event_type": "SESSION_FAILED",
+                "session_id": "session-01",
+                "occurred_at": "2026-08-07T10:31:24+08:00",
+                "case_id": None,
+                "playback_ms": 1_500,
+                "payload": {
+                    "candidate_id": "candidate-01",
+                    "ppe_type": "helmet",
+                    "confidence": 0.91,
+                    "candidate_occurred_at": "2026-08-07T10:31:24+08:00",
+                    "person_track_id": "track-17",
+                },
+            }
+        )
+
+
+def test_case_specific_analysis_event_requires_a_case_id() -> None:
+    with pytest.raises(ValidationError, match="case_id"):
+        AnalysisEvent.model_validate(
+            {
+                "event_id": "event-01",
+                "sequence": 1,
+                "event_type": "CASE_UPDATED",
+                "session_id": "session-01",
+                "occurred_at": "2026-08-07T10:31:24+08:00",
+                "case_id": None,
+                "playback_ms": 1_500,
+                "payload": {
+                    "status": "PENDING_REVIEW",
+                    "version": 3,
+                    "updated_at": "2026-08-07T10:31:24+08:00",
+                    "action": "INVESTIGATION_COMPLETED",
+                },
+            }
+        )
+
+
 def test_analysis_event_rejects_a_timestamp_without_timezone() -> None:
     with pytest.raises(ValidationError, match="occurred_at"):
         AnalysisEvent.model_validate(
@@ -232,6 +536,25 @@ def test_analysis_event_rejects_a_timestamp_without_timezone() -> None:
                 "occurred_at": "2026-08-07T10:31:24",
                 "playback_ms": 1_500,
             }
+        )
+
+
+def test_error_response_can_report_the_current_version() -> None:
+    error = ErrorResponse.model_validate(
+        {
+            "code": "CASE_VERSION_CONFLICT",
+            "message": "事件已被其他操作更新",
+            "current_version": 4,
+        }
+    )
+
+    assert error.current_version == 4
+
+
+def test_case_command_response_version_must_match_the_snapshot() -> None:
+    with pytest.raises(ValidationError, match="version"):
+        CaseCommandResponse.model_validate(
+            {"snapshot": case_data(), "version": 2}
         )
 
 
