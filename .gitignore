@@ -60,6 +60,7 @@ chroma_db/
 /datasets/
 /models/
 /ml/data/
+/ml/video/
 /ml/models/
 *.pt
 *.pth

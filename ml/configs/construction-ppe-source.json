@@ -1,0 +1,28 @@
+{
+  "name": "Construction-PPE",
+  "version": "1.0.0",
+  "publisher": "Ultralytics",
+  "license": "AGPL-3.0",
+  "documentation_url": "https://docs.ultralytics.com/datasets/detect/construction-ppe/",
+  "download_url": "https://github.com/ultralytics/assets/releases/download/v0.0.0/construction-ppe.zip",
+  "downloaded_on": "2026-08-06",
+  "archive_sha256": "bef8dcb599aa4e9d9f5e602cb6fa7143d3c84d7f6a0ff40463d7f2a4c2632ccc",
+  "expected_image_counts": {
+    "train": 1132,
+    "val": 143,
+    "test": 141
+  },
+  "class_names": [
+    "helmet",
+    "gloves",
+    "vest",
+    "boots",
+    "goggles",
+    "none",
+    "Person",
+    "no_helmet",
+    "no_goggle",
+    "no_gloves",
+    "no_boots"
+  ]
+}
