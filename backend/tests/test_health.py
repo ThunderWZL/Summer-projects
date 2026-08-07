@@ -29,7 +29,11 @@ def test_shared_contract_schema_is_exposed() -> None:
         "VlmReviewResult",
         "InvestigationResult",
         "CaseSnapshot",
+        "CaseListResponse",
+        "CaseDetailResponse",
         "AnalysisEvent",
+        "ErrorResponse",
+        "CaseCommandResponse",
     } <= set(response.json())
 
 

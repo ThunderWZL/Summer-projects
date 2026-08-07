@@ -45,7 +45,12 @@ def make_case(status: CaseStatus, version: int = 1) -> CaseSnapshot:
             "camera_id": "CAM-01",
             "person_track_id": "track-17",
             "ppe_type": "helmet",
+            "evidence_kind": "NEGATIVE_CLASS_DETECTION",
             "confidence": 0.91,
+            "model_name": "ppe-yolo",
+            "weights_sha256": "a" * 64,
+            "aggregation_method": "weighted_mean",
+            "aggregation_parameters": {"minimum_frames": 3},
             "occurred_at": "2026-08-07T10:31:24+08:00",
             "first_seen_ms": 1_000,
             "last_seen_ms": 2_000,
@@ -53,12 +58,22 @@ def make_case(status: CaseStatus, version: int = 1) -> CaseSnapshot:
                 {
                     "timestamp_ms": 1_500,
                     "image_url": "/evidence/candidate-01/key.jpg",
+                    "image_width": 1920,
+                    "image_height": 1080,
+                    "frame_role": "REPRESENTATIVE",
                     "person_box": {
                         "x1": 10,
                         "y1": 20,
                         "x2": 110,
                         "y2": 220,
                     },
+                    "observation_box": {
+                        "x1": 30,
+                        "y1": 20,
+                        "x2": 80,
+                        "y2": 60,
+                    },
+                    "observation_confidence": 0.93,
                 }
             ],
         }

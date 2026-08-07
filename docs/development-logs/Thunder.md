@@ -56,12 +56,20 @@
   * 完成：将任务分支交付流程调整为先进入 `dev` 集成测试，再由项目负责人验收并发布到 `main`。
   * 实现：统一任务分支基线、合并前同步、集成测试和正式发布规则，限制 Agent 合并或推送 `main`。
   * 验证：`git diff --check -- AGENTS.md docs/development-logs/Thunder.md`，通过；本次仅修改协作规则和开发日志，未运行代码测试或构建。
+* 20:49 `feat(contracts): 完善视觉候选证据契约`
+  * 完成：明确原始帧像素坐标、证据类别、关键帧角色和候选模型聚合追溯字段。
+  * 实现：校验检测框几何与图像边界、唯一代表帧和时间顺序，并区分真实负类检测与正类未关联的框和置信度规则。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/test_contracts.py tests/domain/test_case_workflow.py`，50 项测试通过。
+* 20:54 `feat(contracts): 补齐页面与事件响应契约`
+  * 完成：增加事件列表与详情响应、人工提交历史、统一时间线、六种固定实时事件载荷、错误响应和人工命令响应。
+  * 实现：保留领域快照并为页面建立独立读模型，按事件类型校验载荷和案件关联，同时统一时区时间与 JSON-only 字段。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，68 项测试通过；`cd frontend && npm run build`，通过；后端未配置 lint 和类型检查，ML 未修改运行代码且未配置全局检查。
 
 ### 问题与处理
 
-* 共享契约的代码与测试已完成，仍需 Wuweizhe 和 Thxnks 分别确认视觉字段和持久化、页面字段足够后，才能按项目定义宣布契约冻结。
+* 契约评审意见已全部落实，仍需 Wuweizhe 和 Thxnks 基于公开 Schema 做最终字段确认后宣布冻结。
 * 远端 `dev` 已由项目负责人从最新 `main` 初始化，任务分支可以按新的集成验收流程同步和交付。
 
 ### 后续计划
 
-* 向 Wuweizhe 和 Thxnks 交付契约 Schema、输入输出样例和验证命令，收集确认或字段修改意见；后续任务从最新 `dev` 创建分支并先进入 `dev` 集成测试。
+* 将任务分支合并到 `dev` 后通知 Wuweizhe 和 Thxnks 同步，并要求两人分别确认 ML 生产字段与数据库、页面消费字段不再缺失。
