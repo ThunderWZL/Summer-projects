@@ -36,7 +36,7 @@
 
 ### 当日目标
 
-* 完成项目骨架分支验收收尾，并开始共享契约与状态机任务。
+* 完成项目骨架分支验收收尾，开始共享契约与状态机任务，并完善 `dev` 集成验收流程。
 
 ### 开发记录
 
@@ -44,11 +44,32 @@
   * 完成：将本地 CrossGuard 快速基线脚本排除在版本控制之外，避免误提交无关实验文件。
   * 实现：仅忽略 `scripts/crossguard_quick_baseline.py`，保留项目后续纳入其他脚本的能力。
   * 验证：`git check-ignore -v --no-index scripts/crossguard_quick_baseline.py`，通过；`git diff --check -- .gitignore`，通过；本次仅修改忽略配置，未运行代码测试或构建。
+* 15:32 `feat(contracts): 冻结共享事件与命令契约`
+  * 完成：补齐候选业务时间、VLM 模型追溯信息、事件人工数据与时间线，并定义七种人工命令契约。
+  * 实现：为候选时间窗口、跨对象身份、时区和 JSON 消息增加校验，通过契约发现接口公开事件与命令 Schema。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，24 项测试通过；`git diff --check`，通过。
+* 15:46 `feat(workflow): 实现事件状态机`
+  * 完成：实现自动复核调查与人工整改闭环的全部合法状态转换，并拒绝越权、跨状态、旧版本、证据缺失和错误候选复核。
+  * 实现：通过 `CaseWorkflow.apply` 统一校验状态、角色和版本，经单次仓储端口调用提交最新快照与审计时间线；系统命令不具备数据库直写能力。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，44 项测试通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端未受本次修改影响，未运行构建。
+* 16:17 `docs(workflow): 改用dev分支集成验收`
+  * 完成：将任务分支交付流程调整为先进入 `dev` 集成测试，再由项目负责人验收并发布到 `main`。
+  * 实现：统一任务分支基线、合并前同步、集成测试和正式发布规则，限制 Agent 合并或推送 `main`。
+  * 验证：`git diff --check -- AGENTS.md docs/development-logs/Thunder.md`，通过；本次仅修改协作规则和开发日志，未运行代码测试或构建。
+* 20:49 `feat(contracts): 完善视觉候选证据契约`
+  * 完成：明确原始帧像素坐标、证据类别、关键帧角色和候选模型聚合追溯字段。
+  * 实现：校验检测框几何与图像边界、唯一代表帧和时间顺序，并区分真实负类检测与正类未关联的框和置信度规则。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/test_contracts.py tests/domain/test_case_workflow.py`，50 项测试通过。
+* 20:54 `feat(contracts): 补齐页面与事件响应契约`
+  * 完成：增加事件列表与详情响应、人工提交历史、统一时间线、六种固定实时事件载荷、错误响应和人工命令响应。
+  * 实现：保留领域快照并为页面建立独立读模型，按事件类型校验载荷和案件关联，同时统一时区时间与 JSON-only 字段。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，68 项测试通过；`cd frontend && npm run build`，通过；后端未配置 lint 和类型检查，ML 未修改运行代码且未配置全局检查。
 
 ### 问题与处理
 
-* 无。
+* 契约评审意见已全部落实，仍需 Wuweizhe 和 Thxnks 基于公开 Schema 做最终字段确认后宣布冻结。
+* 远端 `dev` 已由项目负责人从最新 `main` 初始化，任务分支可以按新的集成验收流程同步和交付。
 
 ### 后续计划
 
-* 完成项目骨架分支合并，从最新远程主分支创建共享契约与状态机任务分支。
+* 将任务分支合并到 `dev` 后通知 Wuweizhe 和 Thxnks 同步，并要求两人分别确认 ML 生产字段与数据库、页面消费字段不再缺失。
