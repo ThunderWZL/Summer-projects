@@ -129,6 +129,7 @@ def make_workflow(case: CaseSnapshot) -> CaseWorkflow:
         store=MemoryCaseStore(case),
         actor_roles=FixedActorRoles(),
         clock=lambda: NOW,
+        responsible_party_is_eligible=lambda snapshot, party_id: True,
     )
 
 

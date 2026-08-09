@@ -106,6 +106,7 @@
 ### 当日目标
 
 * 完成 VLM 复核核心（切片 1），打通"候选 → 复核 → 状态机"链路，并补上 `CaseStorePort` 按候选查询能力。
+* 修复事件 API 黑盒验收发现的责任主体校验、演示证据链与 OpenAPI 错误响应声明问题。
 
 ### 开发记录
 
@@ -135,12 +136,33 @@
   * 完成：新增设计文档 §8.1 六路通道的内存种子化业务上下文与演示用户目录，并补齐 13 项领域测试。
   * 实现：`inmemory/site_context.py` 种子六路 `camera→zone→task`（CAM-01 脚手架区无许可、CAM-02 切割+眼部危害、CAM-03 搬运钢筋+手部危害、CAM-04 旋转设备+卷入风险→矩阵注明不简单要求戴手套、CAM-05 车辆区、CAM-06 普通许可）；许可窗口 08:00–18:00，`find_active_work_permits` 按区域+窗口过滤；`inmemory/actor_roles.py` 提供 `officer-01` 安全员、`reviewer-01` 审核人，同时满足角色与用户目录端口。
   * 验证：`cd backend && .venv/bin/python -m pytest`，101 项通过；`git diff --check`，通过。
+* 17:12 `feat(domain): 提取完整事件仓储协议`
+  * 完成：将事件仓储端口提取为独立公共模块，补齐创建、查询、筛选分页、乐观锁提交、候选反查和人工提交记录接口。
+  * 实现：以 `CaseQuery` 明确状态、PPE、摄像头、责任主体、时间、逾期、关键词和分页语义，以 `CasePage` 返回分页数据与筛选总数；状态机与 VLM 服务改为从新模块依赖协议，既有行为不变。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_case_store_port.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，27 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 17:16 `feat(store): 实现内存事件仓储`
+  * 完成：实现事件快照创建、查询、候选反查、乐观锁提交、人工提交历史与列表筛选分页，并隔离仓储内部可变状态。
+  * 实现：成功提交原子完成版本递增、更新时间和状态时间线追加；列表支持状态、PPE、摄像头、责任主体、发生时间、逾期和关键词筛选，按“逾期、待人工、较早发生”排序后分页，并返回分页前总数。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_inmemory_case_store.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，31 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 17:30 `feat(api): 实现事件查询与人工命令闭环`
+  * 完成：挂载六路演示视频与业务上下文、事件列表与详情、四个人工命令和当前阶段依据检索 REST 接口，提供可直接演示的完整事件种子。
+  * 实现：`deps.py` 统一组合内存上下文、仓储、用户目录、时钟和状态机；列表后端计算筛选分页、统计、逾期、紧急度与重复风险；详情聚合引用、人工提交和完整来源时间线；所有状态变化仅经 `CaseWorkflow.apply`，状态机异常稳定映射为冻结 `ErrorResponse`，版本冲突携带当前版本；视频内容使用支持范围请求的文件响应且不泄露本地路径。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，124 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 17:32 `test(api): 固定事件接口业务时钟`
+  * 完成：让事件 API 测试固定使用带时区的业务时间，避免未来日期变化导致期限与逾期断言漂移。
+  * 实现：通过 FastAPI 公共依赖覆盖替换时钟系统边界，每项测试结束后恢复应用依赖，不修改生产时钟行为。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_cases_api.py`，10 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，124 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查。
+* 18:03 `fix(api): 修复事件命令与演示审计一致性`
+  * 完成：拒绝案件范围外的整改责任主体且保持事件与提交历史不变；修复车辆区结案、待复查及已进展案件的机器结果、调查事实、整改证据和人工提交审计；为四个人工命令公开统一错误响应。
+  * 实现：状态机通过业务上下文校验责任主体资格并稳定返回 400；演示种子按摄像头、区域、任务、PPE、责任主体和引用构建自洽证据链；组合根同时装载人工提交；OpenAPI 显式声明冻结 `ErrorResponse` 的 400、403、404、409 响应。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -q tests/api/test_cases_api.py tests/api/test_error_mapping.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，46 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，134 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
 
 ### 问题与处理
 
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
+* 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
 
 ### 后续计划
 
-* 合并 `feat/site-context-port` 到 `dev` 前通知郝欣冉确认值模型字段；之后进入切片 4-1（API 组合根，换入 in-memory 实现）。
+* 将修复后的 `feat/api-composition` 提交给项目负责人复验；不在任务分支内合并 `dev` 或 `main`。

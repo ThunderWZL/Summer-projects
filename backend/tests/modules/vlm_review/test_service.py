@@ -91,6 +91,7 @@ def make_service(case: CaseSnapshot, model):
         store=store,
         actor_roles=lambda actor_id: None,
         clock=lambda: NOW,
+        responsible_party_is_eligible=lambda snapshot, party_id: True,
     )
     service = VlmReviewService(
         store=store,
