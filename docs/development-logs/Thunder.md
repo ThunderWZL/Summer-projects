@@ -161,6 +161,10 @@
   * 完成：增加慢推理组合回归，验证播放流一次迟到后不会连续追帧，并保持全部源帧顺序输出和资源释放。
   * 实现：通过 `VideoInferenceRunner.iter_video()` 公共生成器注入可控时钟，在播放中制造 350ms 迟到，直接断言下一帧恢复 100ms 正向等待；临时恢复旧 deadline 累加逻辑确认测试可复现零等待 burst 后再恢复正确实现。
   * 验证：`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，17 项通过；`git diff --check`，通过；ML 未配置全局 lint 或构建命令，未运行。
+* 21:54 `test(ml): 验证最新标注的复用与更新`
+  * 完成：强化慢 AI 组合回归，验证完整十帧播放流持续复用最近分析，并在后台新结果到达后更新检测与标注像素。
+  * 实现：分阶段阻塞和释放 2、6、8 号采样帧，确认 4 号旧待处理样本被替换；通过公共输出同时断言人员轨迹 ID 和标注像素从 100 更新到 102、106，且帧序与时间戳完整。
+  * 验证：`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，17 项通过；`git diff --check`，通过；ML 未配置全局 lint 或构建命令，未运行。
 
 ### 问题与处理
 
