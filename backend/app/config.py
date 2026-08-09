@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,8 +25,9 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str = "text-embedding-3-small"
-    chroma_path: str = ".data/requirements-rag.json"
-    rag_top_k: int = 5
+    chroma_path: str = "chroma_db"
+    offline_rag_path: str = ".data/requirements-rag-offline.json"
+    rag_top_k: int = Field(default=5, ge=1, le=20)
 
 
 @lru_cache

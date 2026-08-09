@@ -18,6 +18,7 @@ from app.modules.requirements_rag.embedding import (
 )
 from app.modules.requirements_rag.service import RequirementsRagService
 from app.modules.requirements_rag.store import PersistentVectorStore
+from app.modules.requirements_rag.chroma import ChromaVectorStore
 from app.config import get_settings
 
 
@@ -59,8 +60,13 @@ def get_requirement_retriever() -> RequirementsRagService:
         )
     else:
         embedder = DeterministicEmbeddingClient(model="fake-v1", dimension=32)
+    store = (
+        ChromaVectorStore(settings.chroma_path)
+        if settings.embedding_api_key
+        else PersistentVectorStore(settings.offline_rag_path)
+    )
     return RequirementsRagService(
-        store=PersistentVectorStore(settings.chroma_path),
+        store=store,
         embedder=embedder,
         default_top_k=settings.rag_top_k,
     )

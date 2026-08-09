@@ -1,5 +1,7 @@
 from datetime import date
 import json
+import hashlib
+import pytest
 
 from app.domain.requirements_rag import RequirementChunk, RequirementQuery
 from app.modules.requirements_rag.embedding import DeterministicEmbeddingClient
@@ -51,7 +53,7 @@ def test_service_indexes_searches_idempotently_and_rebuilds_on_model_change(tmp_
     assert duplicate.indexed_chunks == 0
     assert duplicate.skipped_duplicates == 2
     assert citations[0].document_title == "施工 PPE 规范"
-    assert citations[0].section == "第 3 条；标准印刷页1（PDF第1页）"
+    assert citations[0].section == "第 3 条；PDF第1页"
     assert citations[0].excerpt == "施工现场应佩戴安全帽。"
 
     rebuilt = RequirementsRagService(
@@ -80,8 +82,11 @@ def test_service_can_delete_and_rebuild_index(tmp_path) -> None:
 
 
 def test_index_documents_reads_only_manifest_declared_static_files(tmp_path) -> None:
-    text_path = tmp_path / "standard.txt"
-    text_path.write_text("第一条\n\n施工现场应佩戴安全帽。", encoding="utf-8")
+    text_path = tmp_path / "standard.json"
+    text_path.write_text(
+        json.dumps([{"pdf_page": 1, "printed_page": 1, "content": "第一条\n\n施工现场应佩戴安全帽。"}], ensure_ascii=False),
+        encoding="utf-8",
+    )
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(
         json.dumps(
@@ -92,12 +97,18 @@ def test_index_documents_reads_only_manifest_declared_static_files(tmp_path) -> 
                     "standard_no": "GB TEST",
                     "publisher": "Test authority",
                     "source_url": "https://example.test/fixture",
-                    "effective_date": "2025-01-01",
+                        "effective_date": "2025-01-01",
+                        "publication_date": "2025-01-01",
                     "status": "official",
                     "hash_strategy": "sha256-normalized-utf8-content",
-                    "local_path": "standard.txt",
-                    "role": "building_ppe",
-                    "source_level": "main",
+                        "local_path": "standard.json",
+                        "role": "building_ppe",
+                        "source_level": "main",
+                        "extraction_status": "ready",
+                        "source_pdf_sha256": "a" * 64,
+                        "parser_version": "fixture-parser-1",
+                        "derived_text_sha256": hashlib.sha256("第一条\n\n施工现场应佩戴安全帽。".encode()).hexdigest(),
+                        "human_review_status": "reviewed",
                 }
             ],
             ensure_ascii=False,
@@ -124,3 +135,63 @@ def test_search_can_filter_citations_by_effective_date(tmp_path) -> None:
 
     assert service.search(RequirementQuery(q="安全帽", as_of=date(2024, 12, 31))) == []
     assert service.search(RequirementQuery(q="安全帽", as_of=date(2025, 1, 1)))
+
+
+def test_index_rejects_incomplete_vectors_and_rebuilds_on_content_change(tmp_path) -> None:
+    class BadEmbedder(DeterministicEmbeddingClient):
+        def embed_documents(self, texts):
+            return [vector[:-1] for vector in super().embed_documents(texts)]
+
+    service = RequirementsRagService(
+        store=PersistentVectorStore(tmp_path / "rag.json"),
+        embedder=BadEmbedder(dimension=8),
+    )
+    with pytest.raises(ValueError, match="dimension"):
+        service.index([_chunk("one", "安全帽")], manifest_fingerprint="e" * 64)
+
+    store = PersistentVectorStore(tmp_path / "changed.json")
+    good = RequirementsRagService(store=store, embedder=DeterministicEmbeddingClient(dimension=8))
+    good.index([_chunk("one", "旧安全帽条款")], manifest_fingerprint="f" * 64)
+    report = good.index([_chunk("one", "新安全帽条款")], manifest_fingerprint="f" * 64)
+    assert report.rebuilt is True
+    assert [citation.excerpt for citation in good.search(RequirementQuery(q="新安全帽条款"))] == ["新安全帽条款"]
+
+
+def test_source_level_filter_happens_before_top_k_cutoff() -> None:
+    background = _chunk("background", "背景条款").model_copy(update={"source_level": "background"})
+    main = _chunk("main", "主证据").model_copy(update={"source_level": "main"})
+
+    class OrderedStore:
+        def index(self, chunks, vectors, metadata):
+            return (0, 0, False)
+
+        def search(self, vector, top_k):
+            return [background, main]
+
+        def clear(self):
+            pass
+
+    service = RequirementsRagService(
+        store=OrderedStore(),
+        embedder=DeterministicEmbeddingClient(dimension=8),
+    )
+
+    citations = service.search(RequirementQuery(q="PPE", top_k=1))
+
+    assert len(citations) == 1
+    assert citations[0].excerpt == "主证据"
+
+
+def test_search_rejects_embedder_model_mismatch(tmp_path) -> None:
+    store = PersistentVectorStore(tmp_path / "model.json")
+    RequirementsRagService(
+        store=store,
+        embedder=DeterministicEmbeddingClient(model="model-a", dimension=8),
+    ).index([_chunk("one", "安全帽")], manifest_fingerprint="1" * 64)
+    changed = RequirementsRagService(
+        store=store,
+        embedder=DeterministicEmbeddingClient(model="model-b", dimension=8),
+    )
+
+    with pytest.raises(ValueError, match="model"):
+        changed.search(RequirementQuery(q="安全帽"))
