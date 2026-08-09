@@ -23,6 +23,9 @@ def test_manifest_contains_five_sources_with_non_overlapping_roles() -> None:
     assert levels["construction-worker-ppe-guide-2021"] == "supplemental"
     assert levels["samr-ppe-enforcement-2025-77"] == "background"
     assert next(source for source in AUTHORITATIVE_SOURCES if source.role == "field_reference").effective_date is None
+    safety = next(source for source in AUTHORITATIVE_SOURCES if source.role == "safety_general")
+    assert "mohurd.gov.cn" in safety.source_url
+    assert "mofcom.gov.cn" in (safety.verification_url or "")
 
 
 def test_chunker_splits_sections_and_produces_stable_traceable_hashes() -> None:
