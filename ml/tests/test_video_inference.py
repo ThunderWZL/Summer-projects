@@ -85,6 +85,20 @@ class FakeModel:
         return [FakeResult()]
 
 
+class SlowAfterWarmupModel(FakeModel):
+    def __init__(self):
+        super().__init__()
+        self.entered = Event()
+        self.release = Event()
+
+    def track(self, **kwargs):
+        self.calls.append(kwargs)
+        if len(self.calls) > 1:
+            self.entered.set()
+            self.release.wait(timeout=2)
+        return [FakeResult()]
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -180,7 +194,7 @@ class LatestInferenceWorkerTest(unittest.TestCase):
             self.assertEqual(snapshot.timestamp_ms, 200)
         finally:
             release.set()
-            worker.close()
+            worker.close(1.0)
 
     def test_propagates_background_inference_failure(self):
         def fail(_frame):
@@ -195,7 +209,30 @@ class LatestInferenceWorkerTest(unittest.TestCase):
             time.sleep(0.01)
 
         with self.assertRaisesRegex(RuntimeError, "background video inference failed"):
-            worker.close()
+            worker.close(1.0)
+
+    def test_close_times_out_when_inference_does_not_return(self):
+        entered = Event()
+        release = Event()
+
+        def hang(_frame):
+            entered.set()
+            release.wait(timeout=2)
+            return ()
+
+        worker = _LatestInferenceWorker(hang)
+        worker.start()
+        worker.submit_latest(np.zeros((2, 2, 3), dtype=np.uint8), 0)
+        self.assertTrue(entered.wait(timeout=1))
+
+        try:
+            with self.assertRaisesRegex(RuntimeError, "did not stop within"):
+                worker.close(0.01)
+        finally:
+            release.set()
+            worker.thread.join(timeout=1)
+
+        self.assertFalse(worker.thread.is_alive())
 
 
 class VideoInferenceRunnerTest(unittest.TestCase):
@@ -284,6 +321,71 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertTrue(output[0].analysis_updated)
         self.assertEqual(output[0].analysis_timestamp_ms, 0)
         self.assertEqual(output[0].person_track_ids, (17,))
+
+    def test_slow_realtime_ai_does_not_block_complete_frame_output(self):
+        source_frames = [
+            np.full((2, 2, 3), index, dtype=np.uint8) for index in range(6)
+        ]
+        capture = FakeCapture(source_frames, fps=10.0)
+        model = SlowAfterWarmupModel()
+        clock = FakeClock()
+        runner = VideoInferenceRunner(
+            model,
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=lambda frame, _detections: frame.copy(),
+            worker_shutdown_timeout_seconds=1.0,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+        stream = runner.iter_video(Path("fixture.mp4"), realtime=True)
+
+        output = [next(stream) for _ in range(3)]
+        self.assertTrue(model.entered.wait(timeout=1))
+        output.extend(next(stream) for _ in range(3))
+        model.release.set()
+        with self.assertRaises(StopIteration):
+            next(stream)
+
+        self.assertEqual([frame.frame_index for frame in output], list(range(6)))
+        self.assertEqual(
+            [frame.timestamp_ms for frame in output],
+            [0, 100, 200, 300, 400, 500],
+        )
+        self.assertTrue(
+            all(frame.annotated_frame.shape == (2, 2, 3) for frame in output)
+        )
+        self.assertTrue(capture.released)
+
+    def test_worker_timeout_still_releases_video_capture(self):
+        capture = FakeCapture(
+            [np.zeros((2, 2, 3), dtype=np.uint8) for _ in range(3)],
+            fps=10.0,
+        )
+        model = SlowAfterWarmupModel()
+        clock = FakeClock()
+        runner = VideoInferenceRunner(
+            model,
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=lambda frame, _detections: frame.copy(),
+            worker_shutdown_timeout_seconds=0.01,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+        stream = runner.iter_video(Path("fixture.mp4"), realtime=True)
+
+        try:
+            next(stream)
+            next(stream)
+            next(stream)
+            self.assertTrue(model.entered.wait(timeout=1))
+            with self.assertRaisesRegex(RuntimeError, "did not stop within"):
+                next(stream)
+        finally:
+            model.release.set()
+
+        self.assertTrue(capture.released)
 
     def test_releases_invalid_capture(self):
         capture = FakeCapture([], opened=False)
