@@ -122,11 +122,15 @@
   * 完成：新增 `VlmReviewService`，串起"按候选找事件 → 构造请求 → 模型复核 → 严格解析 → 状态机"，并补齐服务测试。
   * 实现：service 只依赖 `VlmModelPort` 协议，换真实模型不改 service 与状态机；解析失败统一落成 UNCERTAIN 复核走 `VLM_REJECTED`，不让脏输出进入事件状态；候选无事件抛 `CandidateNotFound`。
   * 验证：`cd backend && .venv/bin/python -m pytest`，87 项通过；`git diff --check`，通过。
+* 13:49 `fix(vlm): 复核解析拒绝负数播放位置`
+  * 完成：为 `VlmReviewResult.evidence_timestamps_ms` 增加非负兜底校验，阻塞负数毫秒进入状态机。
+  * 实现：冻结契约未对该字段约束非负，解析层显式检查负数即抛 `VlmParseError`，由 service 统一落成 UNCERTAIN → VLM_REJECTED；不修改 contracts.py。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，88 项通过；`git diff --check`，通过。
 
 ### 问题与处理
 
-* 无。
+* 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 
 ### 后续计划
 
-* 切片 1 完成，验证"换适配器 service 一行不改"后，进入切片 2（业务上下文端口，含共享接口，需尽早通知郝欣冉）。
+* 合并 `feat/vlm-review-core` 到 `dev` 后，进入切片 2（业务上下文端口，含共享接口，需尽早通知郝欣冉）。
