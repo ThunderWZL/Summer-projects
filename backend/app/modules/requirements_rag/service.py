@@ -80,16 +80,12 @@ class RequirementsRagService:
                 raise ValueError("query embedder model does not match stored index")
             if len(vector) != index_metadata.vector_dimension:
                 raise ValueError("query embedding dimension does not match stored index")
-        chunks = self.store.search(vector, 20)
-        if query.as_of is not None:
-            chunks = [
-                chunk
-                for chunk in chunks
-                if chunk.effective_date is not None and chunk.effective_date <= query.as_of
-            ]
-        if not query.include_background:
-            chunks = [chunk for chunk in chunks if chunk.source_level != "background"]
-        chunks = chunks[: query.top_k or self.default_top_k]
+        chunks = self.store.search(
+            vector,
+            query.top_k or self.default_top_k,
+            as_of=query.as_of,
+            include_background=query.include_background,
+        )
         return [self._citation(chunk) for chunk in chunks]
 
     def delete_index(self) -> None:
@@ -106,7 +102,10 @@ class RequirementsRagService:
                 raise CorpusNotReady(f"{source.document_id}: extraction status {source.extraction_status}")
             if not source.local_path:
                 raise CorpusNotReady(f"{source.document_id}: local_path is required")
-            for field_name in ("source_pdf_sha256", "derived_text_sha256", "parser_version", "human_review_status"):
+            artifact_hash = source.source_artifact_sha256 or source.source_pdf_sha256
+            if not artifact_hash:
+                raise CorpusNotReady(f"{source.document_id}: source_artifact_sha256 is required")
+            for field_name in ("derived_text_sha256", "parser_version", "human_review_status"):
                 if not getattr(source, field_name):
                     raise CorpusNotReady(f"{source.document_id}: {field_name} is required")
             if source.human_review_status not in {"reviewed", "approved"}:

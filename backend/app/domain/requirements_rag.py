@@ -91,6 +91,9 @@ class RequirementManifestEntry(RequirementsModel):
     effective_date: date | None = None
     status: StrictStr = Field(min_length=1)
     hash_strategy: StrictStr = Field(min_length=1)
+    source_artifact_sha256: StrictStr | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     local_path: StrictStr | None = None
 
 

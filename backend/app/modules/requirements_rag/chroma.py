@@ -48,7 +48,7 @@ class ChromaVectorStore:
 
     def metadata(self):
         if self._client is None:
-            return None
+            self.connect()
         collection = self.connect()
         values = collection.metadata or {}
         if "embedding_model" not in values:
@@ -94,9 +94,17 @@ class ChromaVectorStore:
             )
         return len(pending), skipped, rebuilt
 
-    def search(self, vector: Sequence[float], top_k: int) -> list[RequirementChunk]:
+    def search(
+        self,
+        vector: Sequence[float],
+        top_k: int | None,
+        *,
+        as_of=None,
+        include_background: bool = False,
+    ) -> list[RequirementChunk]:
         collection = self.connect()
-        result = collection.query(query_embeddings=[list(vector)], n_results=top_k)
+        count = collection.count()
+        result = collection.query(query_embeddings=[list(vector)], n_results=top_k or count)
         metadatas = (result.get("metadatas") or [[]])[0]
         chunks: list[RequirementChunk] = []
         for metadata in metadatas:
@@ -109,8 +117,13 @@ class ChromaVectorStore:
             data["page"] = int(data["page"])
             data["pdf_page"] = int(data.get("pdf_page") or data["page"])
             data["printed_page"] = int(data["printed_page"]) if data.get("printed_page") else None
-            chunks.append(RequirementChunk.model_validate(data))
-        return chunks
+            chunk = RequirementChunk.model_validate(data)
+            if as_of is not None and (chunk.effective_date is None or chunk.effective_date > as_of):
+                continue
+            if not include_background and chunk.source_level == "background":
+                continue
+            chunks.append(chunk)
+        return chunks[:top_k] if top_k is not None else chunks
 
     @staticmethod
     def _metadata(chunk: RequirementChunk) -> dict[str, Any]:
