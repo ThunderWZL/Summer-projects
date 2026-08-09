@@ -82,7 +82,7 @@ class RequirementsRagService:
             chunks = [
                 chunk
                 for chunk in chunks
-                if chunk.effective_date is None or chunk.effective_date <= query.as_of
+                if chunk.effective_date is not None and chunk.effective_date <= query.as_of
             ]
         if not query.include_background:
             chunks = [chunk for chunk in chunks if chunk.source_level != "background"]
