@@ -11,6 +11,15 @@ from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.site_context import SiteContextPort, UserDirectoryPort
+from app.modules.requirements_rag.embedding import (
+    DeterministicEmbeddingClient,
+    EmbeddingClientPort,
+    OpenAIEmbeddingClient,
+)
+from app.modules.requirements_rag.service import RequirementsRagService
+from app.modules.requirements_rag.store import PersistentVectorStore
+from app.modules.requirements_rag.chroma import ChromaVectorStore
+from app.config import get_settings
 
 
 Clock = Callable[[], datetime]
@@ -38,6 +47,29 @@ def get_case_store() -> CaseStorePort:
 
 def get_clock() -> Clock:
     return lambda: datetime.now(timezone.utc)
+
+
+@lru_cache
+def get_requirement_retriever() -> RequirementsRagService:
+    settings = get_settings()
+    if settings.embedding_api_key:
+        embedder: EmbeddingClientPort = OpenAIEmbeddingClient(
+            api_key=settings.embedding_api_key,
+            base_url=settings.embedding_base_url,
+            model=settings.embedding_model,
+        )
+    else:
+        embedder = DeterministicEmbeddingClient(model="fake-v1", dimension=32)
+    store = (
+        ChromaVectorStore(settings.chroma_path)
+        if settings.embedding_api_key
+        else PersistentVectorStore(settings.offline_rag_path)
+    )
+    return RequirementsRagService(
+        store=store,
+        embedder=embedder,
+        default_top_k=settings.rag_top_k,
+    )
 
 
 def get_case_workflow(

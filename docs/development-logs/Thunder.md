@@ -159,6 +159,61 @@
 
 ### 问题与处理
 
+* 18:52 `feat(domain): 定义权威依据检索公共端口`
+  * 完成：新增严格 Pydantic 的 `RequirementQuery`、`RequirementChunk`、`IndexMetadata`、`IndexReport` 与来源清单模型，并公开 `RequirementRetrieverPort.search`、`IndexerPort.index` 协议。
+  * 实现：契约拒绝额外字段、空查询和越界 Top-K；chunk 保留页码与内容哈希，索引元数据固定嵌入模型、向量维度和语料指纹，为后续切片 5 Agent 提供只读检索入口。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py -q`，2 项通过；`git diff --check`，通过。
+
+* 18:58 `feat(rag): 添加权威来源清单与稳定切分`
+  * 完成：登记五个官方来源及职责，新增按标题、条款和语义段落切分的稳定 chunker，固定 chunk id 与 content_hash，并拒绝空文档和无效页码。
+  * 实现：manifest 只提交 URL、权威元数据与哈希策略，不包含下载文档；chunk 保留标准、页码、来源和生效日期，供检索结果回映 Citation。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_manifest_chunker.py -q`，3 项通过。
+
+* 19:08 `feat(rag): 实现嵌入索引与权威检索服务`
+  * 完成：接入确定性 fake embedder、JSON 持久化索引、惰性 Chroma 适配器、严格 Citation 映射、API 依赖组合根与五类 Top-K 检查脚本。
+  * 实现：索引按 content_hash 幂等，嵌入模型/维度/manifest 指纹变化受控重建；真实 embedding 仅读取 `EMBEDDING_*`，无密钥时 API 稳定返回空 citations；来源解析状态、来源级别、表项切分和 `as_of` 过滤均有明确边界。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py tests/modules/requirements_rag tests/api/test_requirements_api.py -q`，15 项通过、1 项 `real_rag` 跳过；`git diff --check`，通过。
+
+* 19:14 `fix(rag): 固化来源解析护栏与官方公告链接`
+  * 完成：为来源 manifest 增加 main/supplemental/background 级别、解析/OCR 状态与派生文本审计字段，GB55034 使用住建部公告主链接并保留商务部镜像校验。
+  * 实现：配置指南生效日保持空值，扫描或乱码正文不进入 chunker；表项逐行切分，查询支持 `as_of`，Citation section 统一包含条款与印刷页/PDF 页定位。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_manifest_chunker.py tests/modules/requirements_rag/test_embedding_service.py -q`，9 项通过；真实 RAG 未运行（未配置密钥与下载语料）。
+
+* 19:28 `fix(domain): 扩展权威语料与页码索引契约`
+  * 完成：为公共模型增加 `corpus_fingerprint`、来源级别/角色、实际 PDF 页与可选印刷页、分页输入和显式背景查询模式。
+  * 实现：Index metadata/report 现在可审计实际语料指纹；chunk 保留来源 provenance，旧 `page` 输入保持兼容并规范化到 `pdf_page`。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py tests/modules/requirements_rag/test_acceptance_regressions.py -q`，5 项通过；`git diff --check`，通过。
+
+* 19:45 `fix(rag): 修复语料可信度与索引一致性`
+  * 完成：补齐五来源发布日期、发布机关、PDF hash 与 JSON/Python manifest 一致性；未准备、未复核、乱码、缺分页或 hash 不一致语料统一拒绝索引。
+  * 实现：表格数字行逐行切分并继承页码；语料指纹包含规范化实际内容；来源级别和生效日期在 Top-K 截断前过滤；向量数量、维度、模型不匹配显式失败；真实与离线存储边界分离。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag tests/api/test_requirements_api.py tests/api/test_requirements_composition.py -q`，20 项通过、1 项 `real_rag` 跳过；`git diff --check`，通过。
+
+* 20:02 `fix(domain): 补充索引语料指纹参数`
+  * 完成：公开 `IndexerPort.index` 的可选 `corpus_fingerprint` 参数，使调用方能够显式传递实际规范化语料指纹。
+  * 实现：保持 manifest 指纹与内容指纹分离，未来 Agent 仅消费检索端口，不接触存储实现。
+  * 验证：`git diff --check`，通过；后端全量测试在后续 RAG 修复提交中统一运行。
+
+* 20:11 `fix(rag): 校正官方来源状态与检查脚本`
+  * 完成：将五来源状态、发布机关、77号文发布日期/生效日和 HTML 正文节点 hash 策略改为官方可核验值，并保持 Python 常量与随仓 JSON 完全一致。
+  * 实现：Top-K 检查从仓库 manifest 验证语料，缺密钥、未准备语料或空 citation 均以 NOT RUN/非零退出，不再把离线空库当真实 RAG 成功。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest -q`，155 项通过、1 项 `real_rag` 跳过；真实 RAG 未运行。
+
+* 20:19 `fix(rag): 提供默认来源清单与语料未就绪别名`
+  * 完成：`load_manifest()` 可直接加载随仓五来源清单，并公开 `CorpusNotReadyError` 兼容名称，便于验收和上层明确报告未准备语料。
+  * 实现：默认路径固定在 requirements_rag manifests 目录，不引入下载文件或索引产物。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_acceptance_regressions.py -q`，3 项通过；`git diff --check`，通过。
+
+* 20:36 `fix(rag): 下推检索过滤并支持来源 artifact`
+  * 完成：将 as_of/source_level 过滤下推 JSON 与 Chroma 存储层，新增通用 `source_artifact_sha256`，HTML 正文可在人工复核后入库并保留 PDF 来源追踪。
+  * 实现：检索不再使用固定候选上限；冷启动 Chroma metadata 主动连接现有 collection，恢复 embedding model、维度、manifest 与 corpus 校验。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_embedding_service.py tests/modules/requirements_rag/test_html_artifact.py tests/modules/requirements_rag/test_chroma_lazy.py -q`，12 项通过；`git diff --check`，通过。
+
+* 20:51 `fix(rag): 修复 Chroma 全量候选过滤`
+  * 完成：Chroma 检索先以 collection.count() 请求完整候选集，再按生效日期、来源级别过滤和 top_k 截断；空 collection 直接返回空结果。
+  * 实现：消除 Chroma 路径中 `n_results=top_k` 的预截断，确保第 21 条有效主证据不会被前 20 条未来/背景条款遮蔽。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py::test_chroma_search_queries_all_rows_before_filtering_top_k tests/modules/requirements_rag/test_chroma_lazy.py::test_chroma_search_empty_collection_returns_without_querying -q`，2 项通过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
