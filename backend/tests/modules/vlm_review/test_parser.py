@@ -101,3 +101,16 @@ def test_unknown_extra_fields_are_rejected() -> None:
             model_parameters={},
             reviewed_at=REVIEWED_AT,
         )
+
+
+def test_negative_evidence_timestamps_are_rejected() -> None:
+    payload = {**valid_content(), "evidence_timestamps_ms": [-1, 100]}
+    raw = make_raw(json.dumps(payload))
+
+    with pytest.raises(VlmParseError):
+        parse(
+            raw,
+            model_provider="fixture",
+            model_parameters={},
+            reviewed_at=REVIEWED_AT,
+        )

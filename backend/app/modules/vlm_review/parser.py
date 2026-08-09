@@ -43,7 +43,7 @@ def parse(
         raise VlmParseError("content 必须是 JSON 对象")
 
     try:
-        return VlmReviewResult.model_validate(
+        review = VlmReviewResult.model_validate(
             {
                 **payload,
                 "model_name": raw.model_name,
@@ -54,3 +54,10 @@ def parse(
         )
     except ValidationError as exc:
         raise VlmParseError(str(exc)) from exc
+
+    # 契约约定播放位置为非负整数毫秒；冻结契约未对 evidence_timestamps_ms
+    # 加 ge=0 约束，这里由解析层兜底，防止负数进入状态机。
+    if any(timestamp_ms < 0 for timestamp_ms in review.evidence_timestamps_ms):
+        raise VlmParseError("evidence_timestamps_ms 必须是非负整数毫秒")
+
+    return review
