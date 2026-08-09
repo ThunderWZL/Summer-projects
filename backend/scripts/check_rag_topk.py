@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from app.api.deps import get_requirement_retriever
 from app.config import get_settings
 from app.domain.requirements_rag import RequirementQuery
+from app.modules.requirements_rag.service import CorpusNotReady
 
 
 QUESTIONS = {
@@ -24,13 +26,25 @@ def main() -> int:
         print("SKIP: EMBEDDING_API_KEY is not configured; real RAG was not run.")
         return 2
     retriever = get_requirement_retriever()
+    manifest_path = Path(__file__).parents[1] / "app/modules/requirements_rag/manifests/authoritative_sources.json"
+    try:
+        retriever.index_documents(manifest_path)
+    except CorpusNotReady as exc:
+        print(f"NOT RUN: verified corpus is not ready ({exc}).")
+        for category in QUESTIONS:
+            print(f"[{category}] NOT RUN")
+        return 2
+    failed = False
     for category, question in QUESTIONS.items():
         print(f"\n[{category}] {question}")
         citations = retriever.search(RequirementQuery(q=question, top_k=settings.rag_top_k))
+        if not citations:
+            failed = True
+            print("NOT RUN: no citation returned")
         for index, citation in enumerate(citations, start=1):
             print(f"{index}. {citation.document_title} | {citation.section}")
             print(f"   {citation.source_url}\n   {citation.excerpt}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -64,5 +64,5 @@ def test_requirements_search_returns_service_citations_when_indexed(tmp_path) ->
 
     assert response.status_code == 200
     body = response.json()
-    assert body["citations"][0]["section"] == "第 4 条；标准印刷页2（PDF第2页）"
+    assert body["citations"][0]["section"] == "第 4 条；PDF第2页"
     assert body["citations"][0]["source_url"] == "https://example.test/fixture"

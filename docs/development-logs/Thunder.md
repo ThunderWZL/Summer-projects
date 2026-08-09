@@ -184,6 +184,11 @@
   * 实现：Index metadata/report 现在可审计实际语料指纹；chunk 保留来源 provenance，旧 `page` 输入保持兼容并规范化到 `pdf_page`。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py tests/modules/requirements_rag/test_acceptance_regressions.py -q`，5 项通过；`git diff --check`，通过。
 
+* 19:45 `fix(rag): 修复语料可信度与索引一致性`
+  * 完成：补齐五来源发布日期、发布机关、PDF hash 与 JSON/Python manifest 一致性；未准备、未复核、乱码、缺分页或 hash 不一致语料统一拒绝索引。
+  * 实现：表格数字行逐行切分并继承页码；语料指纹包含规范化实际内容；来源级别和生效日期在 Top-K 截断前过滤；向量数量、维度、模型不匹配显式失败；真实与离线存储边界分离。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag tests/api/test_requirements_api.py tests/api/test_requirements_composition.py -q`，20 项通过、1 项 `real_rag` 跳过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。

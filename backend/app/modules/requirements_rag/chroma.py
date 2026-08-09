@@ -46,6 +46,17 @@ class ChromaVectorStore:
         self._client.delete_collection(self.collection_name)
         self._collection = None
 
+    def metadata(self):
+        if self._client is None:
+            return None
+        collection = self.connect()
+        values = collection.metadata or {}
+        if "embedding_model" not in values:
+            return None
+        return IndexMetadata.model_validate(
+            {key: values[key] for key in ("embedding_model", "vector_dimension", "manifest_fingerprint", "corpus_fingerprint")}
+        )
+
     def index(
         self,
         chunks: Sequence[RequirementChunk],
@@ -64,11 +75,15 @@ class ChromaVectorStore:
             rebuilt = False
         existing = collection.get(include=["metadatas"])
         hashes = {
-            str(item.get("content_hash"))
+            (str(item.get("document_id")), str(item.get("content_hash")))
             for item in (existing.get("metadatas") or [])
             if item
         }
-        pending = [(chunk, vector) for chunk, vector in zip(chunks, vectors) if chunk.content_hash not in hashes]
+        pending = [
+            (chunk, vector)
+            for chunk, vector in zip(chunks, vectors)
+            if (chunk.document_id, chunk.content_hash) not in hashes
+        ]
         skipped = len(chunks) - len(pending)
         if pending:
             collection.add(
@@ -90,6 +105,10 @@ class ChromaVectorStore:
             data = dict(metadata)
             effective = data.get("effective_date")
             data["effective_date"] = date.fromisoformat(effective) if effective else None
+            data["standard_no"] = data.get("standard_no") or None
+            data["page"] = int(data["page"])
+            data["pdf_page"] = int(data.get("pdf_page") or data["page"])
+            data["printed_page"] = int(data["printed_page"]) if data.get("printed_page") else None
             chunks.append(RequirementChunk.model_validate(data))
         return chunks
 
@@ -102,8 +121,12 @@ class ChromaVectorStore:
             "standard_no": chunk.standard_no or "",
             "clause": chunk.clause,
             "page": chunk.page,
+            "pdf_page": chunk.pdf_page,
+            "printed_page": chunk.printed_page or "",
             "source_url": chunk.source_url,
             "effective_date": chunk.effective_date.isoformat() if chunk.effective_date else "",
             "content_hash": chunk.content_hash,
             "content": chunk.content,
+            "source_level": chunk.source_level,
+            "role": chunk.role,
         }

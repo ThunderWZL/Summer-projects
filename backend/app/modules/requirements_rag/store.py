@@ -4,9 +4,24 @@ import json
 import math
 from datetime import date
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Protocol, Sequence
 
 from app.domain.requirements_rag import IndexMetadata, RequirementChunk
+
+
+class VectorStorePort(Protocol):
+    def index(
+        self,
+        chunks: Sequence[RequirementChunk],
+        vectors: Sequence[Sequence[float]],
+        metadata: IndexMetadata,
+    ) -> tuple[int, int, bool]: ...
+
+    def search(self, vector: Sequence[float], top_k: int) -> list[RequirementChunk]: ...
+
+    def clear(self) -> None: ...
+
+    def metadata(self) -> IndexMetadata | None: ...
 
 
 class PersistentVectorStore:
@@ -30,6 +45,12 @@ class PersistentVectorStore:
         if self.path.exists():
             self.path.unlink()
 
+    def metadata(self) -> IndexMetadata | None:
+        current = self._read()
+        if not current or not current.get("metadata"):
+            return None
+        return IndexMetadata.model_validate(current["metadata"])
+
     def index(
         self,
         chunks: Sequence[RequirementChunk],
@@ -45,18 +66,21 @@ class PersistentVectorStore:
             rebuilt = current is not None
         else:
             records = current.get("records", {})
-        content_hashes = {record["chunk"]["content_hash"] for record in records.values()}
+        content_keys = {
+            (record["chunk"]["document_id"], record["chunk"]["content_hash"])
+            for record in records.values()
+        }
         indexed = 0
         skipped = 0
         for chunk, vector in zip(chunks, vectors):
-            if chunk.content_hash in content_hashes:
+            if (chunk.document_id, chunk.content_hash) in content_keys:
                 skipped += 1
                 continue
             records[chunk.chunk_id] = {
                 "chunk": chunk.model_dump(mode="json"),
                 "vector": list(vector),
             }
-            content_hashes.add(chunk.content_hash)
+            content_keys.add((chunk.document_id, chunk.content_hash))
             indexed += 1
         self._write({"metadata": metadata.model_dump(mode="json"), "records": records})
         return indexed, skipped, rebuilt
@@ -69,7 +93,7 @@ class PersistentVectorStore:
         for chunk_id, record in current.get("records", {}).items():
             stored = record["vector"]
             if len(stored) != len(vector):
-                continue
+                raise ValueError("query vector dimension does not match stored index")
             norm = math.sqrt(sum(value * value for value in stored)) or 1.0
             score = sum(a * b for a, b in zip(vector, stored)) / norm
             raw_chunk = dict(record["chunk"])
