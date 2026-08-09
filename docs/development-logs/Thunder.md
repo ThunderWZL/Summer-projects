@@ -199,6 +199,11 @@
   * 实现：Top-K 检查从仓库 manifest 验证语料，缺密钥、未准备语料或空 citation 均以 NOT RUN/非零退出，不再把离线空库当真实 RAG 成功。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest -q`，155 项通过、1 项 `real_rag` 跳过；真实 RAG 未运行。
 
+* 20:19 `fix(rag): 提供默认来源清单与语料未就绪别名`
+  * 完成：`load_manifest()` 可直接加载随仓五来源清单，并公开 `CorpusNotReadyError` 兼容名称，便于验收和上层明确报告未准备语料。
+  * 实现：默认路径固定在 requirements_rag manifests 目录，不引入下载文件或索引产物。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_acceptance_regressions.py -q`，3 项通过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。

@@ -23,6 +23,9 @@ class CorpusNotReady(RuntimeError):
     """Manifest or derived corpus cannot be safely indexed yet."""
 
 
+CorpusNotReadyError = CorpusNotReady
+
+
 class RequirementsRagService:
     def __init__(
         self,

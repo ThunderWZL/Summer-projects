@@ -25,6 +25,7 @@ def test_shipped_manifest_loads_with_real_provenance_metadata() -> None:
     assert next(item for item in sources if item.document_id == "gb-39800-1-2020").publication_date == date(2020, 12, 24)
     assert next(item for item in sources if item.document_id == "gb-55034-2022").publication_date == date(2022, 10, 31)
     assert next(item for item in sources if item.document_id == "samr-ppe-enforcement-2025-77").publication_date == date(2025, 9, 2)
+    assert len(load_manifest()) == 5
 
 
 def test_table_rows_without第项_prefix_are_kept_separate() -> None:
