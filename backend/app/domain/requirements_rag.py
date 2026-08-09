@@ -129,5 +129,6 @@ class IndexerPort(Protocol):
         chunks: Sequence[RequirementChunk],
         *,
         manifest_fingerprint: str,
+        corpus_fingerprint: str | None = None,
     ) -> IndexReport:
         """Idempotently index chunks, rebuilding on embedding metadata changes."""
