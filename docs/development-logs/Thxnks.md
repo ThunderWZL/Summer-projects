@@ -16,6 +16,10 @@
   * 完成：提供可重复执行的 SQLite 初始化入口，写入六路区域、摄像头、视频、许可、任务矩阵、责任主体和演示用户。
   * 实现：复用冻结的内存业务上下文生成数据库种子，保留 CAM-01 无许可、CAM-03/04 手套要求差异和 CAM-06 无额外 PPE 的演示语义。
   * 验证：`.venv\Scripts\python.exe -m app.adapters.database.seed --database-url sqlite:///:memory:`，成功生成 6 路上下文；`.venv\Scripts\python.exe -m pytest`，167 项通过、1 项因需要真实 RAG 凭据跳过。
+* 22:39 `fix(database): 统一SQLite时间比较语义`
+  * 完成：修复不同时区偏移的 ISO 时间文本无法可靠排序的问题。
+  * 实现：所有带时区时间在写入 SQLite 前统一转换为 UTC，读取后仍返回带时区 `datetime`。
+  * 验证：`.venv\Scripts\python.exe -m pytest tests/adapters/database -q`，7 项测试通过；`.venv\Scripts\python.exe -m pytest`，167 项通过、1 项因需要真实 RAG 凭据跳过。
 
 ### 问题与处理
 

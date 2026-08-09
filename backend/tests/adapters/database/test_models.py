@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import inspect
@@ -42,7 +42,7 @@ def test_schema_contains_the_designed_tables_and_candidate_uniqueness() -> None:
     )
 
 
-def test_aware_datetime_round_trips_its_offset() -> None:
+def test_aware_datetime_normalizes_to_utc_without_changing_the_instant() -> None:
     value = datetime.fromisoformat("2026-08-07T09:00:00+08:00")
     column_type = TimezoneAwareDateTime()
 
@@ -51,7 +51,8 @@ def test_aware_datetime_round_trips_its_offset() -> None:
 
     assert restored == value
     assert restored is not None
-    assert restored.utcoffset() == value.utcoffset()
+    assert restored.utcoffset() == timedelta(0)
+    assert stored == "2026-08-07T01:00:00+00:00"
 
 
 def test_aware_datetime_rejects_a_naive_value() -> None:
