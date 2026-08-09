@@ -127,10 +127,16 @@
   * 实现：冻结契约未对该字段约束非负，解析层显式检查负数即抛 `VlmParseError`，由 service 统一落成 UNCERTAIN → VLM_REJECTED；不修改 contracts.py。
   * 验证：`cd backend && .venv/bin/python -m pytest`，88 项通过；`git diff --check`，通过。
 
+* 14:14 `feat(domain): 定义业务上下文端口与共享值模型`
+  * 完成：新增业务上下文只读端口与七类共享值模型，作为 Agent 调查工具与 `/api/v1/demo/*` 的数据来源，也是郝欣冉 X-01 种子数据必须产出的值模型集合。
+  * 实现：`site_context.py` 定义 `ZoneInfo/CameraInfo/VideoInfo/WorkPermit/TaskPpeMatrix/ResponsibleParty/DemoUser`（全部 `extra="forbid"` 严格校验，字段语义对齐设计文档 §6.2），端口 `SiteContextPort`（get_zone_at / find_active_work_permits / get_task_ppe_matrix / list_eligible_responsible_parties / list_videos / get_video）与 `UserDirectoryPort.get`；端口只读，禁止通过端口写入业务数据。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，88 项通过；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
+* 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 
 ### 后续计划
 
-* 合并 `feat/vlm-review-core` 到 `dev` 后，进入切片 2（业务上下文端口，含共享接口，需尽早通知郝欣冉）。
+* 合并 `feat/site-context-port` 到 `dev` 前通知郝欣冉确认值模型字段；之后进入切片 4-1（API 组合根，换入 in-memory 实现）。
