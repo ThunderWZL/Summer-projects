@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -11,9 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from video_inference import (  # noqa: E402
     FrameRateSampler,
     RealtimePacer,
+    TrackedDetection,
     VideoInferenceRunner,
     _LatestInferenceWorker,
     extract_detections,
+    write_annotated_video,
 )
 
 
@@ -68,12 +71,55 @@ class FakeCapture:
 
 class FakeCv2:
     CAP_PROP_FPS = 5
+    FONT_HERSHEY_SIMPLEX = 0
+    LINE_AA = 16
 
     def __init__(self, capture):
         self.capture = capture
+        self.writers = []
 
     def VideoCapture(self, _path):
         return self.capture
+
+    def rectangle(self, frame, point1, point2, color, thickness):
+        x1, y1 = point1
+        x2, y2 = point2
+        frame[y1 : y1 + thickness, x1 : x2 + 1] = color
+        frame[y2 - thickness + 1 : y2 + 1, x1 : x2 + 1] = color
+        frame[y1 : y2 + 1, x1 : x1 + thickness] = color
+        frame[y1 : y2 + 1, x2 - thickness + 1 : x2 + 1] = color
+
+    def putText(self, frame, _label, origin, _font, _scale, color, _thickness, _line):
+        x, y = origin
+        frame[y, x] = color
+
+    def VideoWriter_fourcc(self, *codec):
+        return "".join(codec)
+
+    def VideoWriter(self, path, codec, fps, size):
+        writer = FakeWriter(path, codec, fps, size)
+        self.writers.append(writer)
+        return writer
+
+
+class FakeWriter:
+    def __init__(self, path, codec, fps, size, opened=True):
+        self.path = path
+        self.codec = codec
+        self.fps = fps
+        self.size = size
+        self.opened = opened
+        self.frames = []
+        self.released = False
+
+    def isOpened(self):
+        return self.opened
+
+    def write(self, frame):
+        self.frames.append(frame.copy())
+
+    def release(self):
+        self.released = True
 
 
 class FakeModel:
@@ -90,9 +136,11 @@ class SlowAfterWarmupModel(FakeModel):
         super().__init__()
         self.entered = Event()
         self.release = Event()
+        self.source_values = []
 
     def track(self, **kwargs):
         self.calls.append(kwargs)
+        self.source_values.append(int(kwargs["source"][0, 0, 0]))
         if len(self.calls) > 1:
             self.entered.set()
             self.release.wait(timeout=2)
@@ -130,7 +178,7 @@ class FrameRateSamplerTest(unittest.TestCase):
 
 
 class RealtimePacerTest(unittest.TestCase):
-    def test_rebases_after_late_frame_instead_of_chasing(self):
+    def test_rebases_after_late_frame_then_resumes_sleep(self):
         clock = FakeClock()
         pacer = RealtimePacer(
             10.0,
@@ -272,6 +320,47 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertTrue(all(count == 1 for _, count in render_calls))
         self.assertTrue(capture.released)
 
+    def test_realtime_frames_arrive_at_wall_clock_cadence(self):
+        capture = FakeCapture(
+            [np.zeros((2, 2, 3), dtype=np.uint8) for _ in range(5)],
+            fps=20.0,
+        )
+        runner = VideoInferenceRunner(
+            FakeModel(),
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=lambda frame, _detections: frame.copy(),
+        )
+
+        arrival_times = []
+        for _frame in runner.iter_video(Path("fixture.mp4"), realtime=True):
+            arrival_times.append(time.monotonic())
+
+        elapsed = arrival_times[-1] - arrival_times[0]
+        self.assertGreaterEqual(elapsed, 0.16)
+        self.assertLess(elapsed, 0.8)
+
+    def test_renderer_changes_pixels_without_mutating_original_frame(self):
+        capture = FakeCapture([])
+        runner = VideoInferenceRunner(
+            FakeModel(), cv2_module=FakeCv2(capture)
+        )
+        original = np.zeros((240, 160, 3), dtype=np.uint8)
+        detection = TrackedDetection(
+            class_id=6,
+            class_name="Person",
+            confidence=0.91,
+            box=(10.0, 20.0, 110.0, 220.0),
+            track_id=17,
+        )
+
+        annotated = runner._render_detections(original, (detection,))
+
+        self.assertFalse(np.shares_memory(original, annotated))
+        self.assertEqual(int(original.sum()), 0)
+        self.assertGreater(int(annotated.sum()), 0)
+        np.testing.assert_array_equal(annotated[20, 10], [0, 200, 0])
+
     def test_max_frames_limits_playback_frames_not_ai_samples(self):
         capture = FakeCapture(
             [np.zeros((2, 2, 3), dtype=np.uint8) for _ in range(10)],
@@ -324,7 +413,7 @@ class VideoInferenceRunnerTest(unittest.TestCase):
 
     def test_slow_realtime_ai_does_not_block_complete_frame_output(self):
         source_frames = [
-            np.full((2, 2, 3), index, dtype=np.uint8) for index in range(6)
+            np.full((2, 2, 3), index, dtype=np.uint8) for index in range(8)
         ]
         capture = FakeCapture(source_frames, fps=10.0)
         model = SlowAfterWarmupModel()
@@ -342,20 +431,60 @@ class VideoInferenceRunnerTest(unittest.TestCase):
 
         output = [next(stream) for _ in range(3)]
         self.assertTrue(model.entered.wait(timeout=1))
-        output.extend(next(stream) for _ in range(3))
+        output.extend(next(stream) for _ in range(5))
         model.release.set()
+        deadline = time.monotonic() + 1
+        while len(model.source_values) < 3 and time.monotonic() < deadline:
+            time.sleep(0.01)
         with self.assertRaises(StopIteration):
             next(stream)
 
-        self.assertEqual([frame.frame_index for frame in output], list(range(6)))
+        self.assertEqual([frame.frame_index for frame in output], list(range(8)))
         self.assertEqual(
             [frame.timestamp_ms for frame in output],
-            [0, 100, 200, 300, 400, 500],
+            [0, 100, 200, 300, 400, 500, 600, 700],
         )
+        self.assertEqual(model.source_values, [0, 2, 6])
         self.assertTrue(
             all(frame.annotated_frame.shape == (2, 2, 3) for frame in output)
         )
         self.assertTrue(capture.released)
+
+    def test_writes_every_annotated_frame_with_source_video_boundaries(self):
+        source_frames = [
+            np.full((36, 64, 3), index, dtype=np.uint8) for index in range(4)
+        ]
+        capture = FakeCapture(source_frames, fps=10.0)
+        cv2_module = FakeCv2(capture)
+        runner = VideoInferenceRunner(
+            FakeModel(),
+            cv2_module=cv2_module,
+            target_fps=5.0,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_path = Path(temporary_directory) / "annotated.mp4"
+            summary = write_annotated_video(
+                runner,
+                Path("fixture.mp4"),
+                output_path,
+            )
+
+        writer = cv2_module.writers[0]
+        self.assertEqual(writer.codec, "mp4v")
+        self.assertEqual(writer.fps, 10.0)
+        self.assertEqual(writer.size, (64, 36))
+        self.assertEqual(len(writer.frames), 4)
+        self.assertTrue(
+            all(
+                np.array_equal(frame[20, 10], [0, 200, 0])
+                for frame in writer.frames
+            )
+        )
+        self.assertTrue(writer.released)
+        self.assertEqual(summary.frame_count, 4)
+        self.assertEqual((summary.image_width, summary.image_height), (64, 36))
+        self.assertEqual(summary.fps, 10.0)
 
     def test_worker_timeout_still_releases_video_capture(self):
         capture = FakeCapture(
