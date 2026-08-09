@@ -37,6 +37,7 @@ class InferenceFrame:
     timestamp_ms: int
     image_width: int
     image_height: int
+    source_fps: float
     detections: tuple[TrackedDetection, ...]
     analysis_timestamp_ms: int | None
     analysis_updated: bool
@@ -50,6 +51,15 @@ class InferenceFrame:
             if detection.class_name.lower() == "person"
             and detection.track_id is not None
         )
+
+
+@dataclass(frozen=True)
+class VideoOutputSummary:
+    output_path: str
+    frame_count: int
+    image_width: int
+    image_height: int
+    fps: float
 
 
 @dataclass(frozen=True)
@@ -428,6 +438,7 @@ class VideoInferenceRunner:
                     timestamp_ms=timestamp_ms,
                     image_width=int(frame.shape[1]),
                     image_height=int(frame.shape[0]),
+                    source_fps=source_fps,
                     detections=detections,
                     analysis_timestamp_ms=analysis_timestamp_ms,
                     analysis_updated=analysis_updated,
@@ -444,6 +455,66 @@ class VideoInferenceRunner:
                     worker.close(self.worker_shutdown_timeout_seconds)
             finally:
                 capture.release()
+
+
+def write_annotated_video(
+    runner: VideoInferenceRunner,
+    video_path: Path,
+    output_path: Path,
+    *,
+    realtime: bool = False,
+    max_playback_frames: int | None = None,
+) -> VideoOutputSummary:
+    """Write every annotated playback frame to a new MP4 file."""
+
+    if video_path.resolve() == output_path.resolve():
+        raise ValueError("output video must not overwrite the input video")
+    if output_path.exists():
+        raise FileExistsError(f"output video already exists: {output_path}")
+    if not output_path.parent.is_dir():
+        raise FileNotFoundError(
+            f"output video directory does not exist: {output_path.parent}"
+        )
+
+    writer: Any | None = None
+    frame_count = 0
+    image_width = 0
+    image_height = 0
+    source_fps = 0.0
+    try:
+        for frame in runner.iter_video(
+            video_path,
+            realtime=realtime,
+            max_playback_frames=max_playback_frames,
+        ):
+            if writer is None:
+                image_width = frame.image_width
+                image_height = frame.image_height
+                source_fps = frame.source_fps
+                codec = runner.cv2.VideoWriter_fourcc(*"mp4v")
+                writer = runner.cv2.VideoWriter(
+                    str(output_path),
+                    codec,
+                    source_fps,
+                    (image_width, image_height),
+                )
+                if not writer.isOpened():
+                    raise ValueError(f"unable to open output video: {output_path}")
+            writer.write(frame.annotated_frame)
+            frame_count += 1
+    finally:
+        if writer is not None:
+            writer.release()
+
+    if frame_count == 0:
+        raise ValueError(f"input video contains no frames: {video_path}")
+    return VideoOutputSummary(
+        output_path=str(output_path),
+        frame_count=frame_count,
+        image_width=image_width,
+        image_height=image_height,
+        fps=source_fps,
+    )
 
 
 def _parse_device(value: str) -> str | int | None:
@@ -468,6 +539,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--realtime", action="store_true")
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--shutdown-timeout", type=float, default=10.0)
+    parser.add_argument("--output-video", type=Path)
     return parser.parse_args()
 
 
@@ -483,23 +555,33 @@ def main() -> int:
         playback_speed=args.playback_speed,
         worker_shutdown_timeout_seconds=args.shutdown_timeout,
     )
-    for frame in runner.iter_video(
-        args.video,
-        realtime=args.realtime,
-        max_playback_frames=args.max_frames,
-    ):
-        print(
-            json.dumps(
-                {
-                    "frame_index": frame.frame_index,
-                    "timestamp_ms": frame.timestamp_ms,
-                    "analysis_timestamp_ms": frame.analysis_timestamp_ms,
-                    "analysis_updated": frame.analysis_updated,
-                    "detections": len(frame.detections),
-                    "person_track_ids": frame.person_track_ids,
-                }
-            )
+    if args.output_video is not None:
+        summary = write_annotated_video(
+            runner,
+            args.video,
+            args.output_video,
+            realtime=args.realtime,
+            max_playback_frames=args.max_frames,
         )
+        print(json.dumps(summary.__dict__))
+    else:
+        for frame in runner.iter_video(
+            args.video,
+            realtime=args.realtime,
+            max_playback_frames=args.max_frames,
+        ):
+            print(
+                json.dumps(
+                    {
+                        "frame_index": frame.frame_index,
+                        "timestamp_ms": frame.timestamp_ms,
+                        "analysis_timestamp_ms": frame.analysis_timestamp_ms,
+                        "analysis_updated": frame.analysis_updated,
+                        "detections": len(frame.detections),
+                        "person_track_ids": frame.person_track_ids,
+                    }
+                )
+            )
     return 0
 
 
