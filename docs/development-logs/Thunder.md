@@ -164,6 +164,16 @@
   * 实现：契约拒绝额外字段、空查询和越界 Top-K；chunk 保留页码与内容哈希，索引元数据固定嵌入模型、向量维度和语料指纹，为后续切片 5 Agent 提供只读检索入口。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py -q`，2 项通过；`git diff --check`，通过。
 
+* 18:58 `feat(rag): 添加权威来源清单与稳定切分`
+  * 完成：登记五个官方来源及职责，新增按标题、条款和语义段落切分的稳定 chunker，固定 chunk id 与 content_hash，并拒绝空文档和无效页码。
+  * 实现：manifest 只提交 URL、权威元数据与哈希策略，不包含下载文档；chunk 保留标准、页码、来源和生效日期，供检索结果回映 Citation。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_manifest_chunker.py -q`，3 项通过。
+
+* 19:08 `feat(rag): 实现嵌入索引与权威检索服务`
+  * 完成：接入确定性 fake embedder、JSON 持久化索引、惰性 Chroma 适配器、严格 Citation 映射、API 依赖组合根与五类 Top-K 检查脚本。
+  * 实现：索引按 content_hash 幂等，嵌入模型/维度/manifest 指纹变化受控重建；真实 embedding 仅读取 `EMBEDDING_*`，无密钥时 API 稳定返回空 citations；来源解析状态、来源级别、表项切分和 `as_of` 过滤均有明确边界。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py tests/modules/requirements_rag tests/api/test_requirements_api.py -q`，15 项通过、1 项 `real_rag` 跳过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。

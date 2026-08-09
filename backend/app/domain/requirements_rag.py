@@ -22,6 +22,7 @@ class RequirementsModel(BaseModel):
 class RequirementQuery(RequirementsModel):
     q: StrictStr = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=20)
+    as_of: date | None = None
 
 
 class RequirementChunk(RequirementsModel):
@@ -78,6 +79,11 @@ class RequirementDocument(RequirementsModel):
     source_url: StrictStr = Field(min_length=1)
     effective_date: date | None = None
     pages: list[tuple[int, str]] = Field(min_length=1)
+    extraction_status: StrictStr = "ready"
+    source_pdf_sha256: StrictStr | None = None
+    parser_version: StrictStr | None = None
+    derived_text_sha256: StrictStr | None = None
+    human_review_status: StrictStr | None = None
 
 
 @runtime_checkable
@@ -95,4 +101,3 @@ class IndexerPort(Protocol):
         manifest_fingerprint: str,
     ) -> IndexReport:
         """Idempotently index chunks, rebuilding on embedding metadata changes."""
-

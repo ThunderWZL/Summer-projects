@@ -7,12 +7,17 @@ from app.domain.requirements_rag import RequirementChunk, RequirementDocument
 
 
 _HEADING = re.compile(r"^(?:第[^\s]{1,20}[章节条]|\d+(?:\.\d+)*\s+\S+)")
+_TABLE_ITEM = re.compile(r"^(?:第\s*\d+\s*项|\d+\s*[、.])")
 
 
 class RequirementChunker:
     """Split static source text at headings and semantic paragraphs."""
 
     def split(self, document: RequirementDocument) -> list[RequirementChunk]:
+        if document.extraction_status != "ready":
+            raise ValueError(
+                f"document extraction is not safe for indexing: {document.extraction_status}"
+            )
         seen: set[str] = set()
         chunks: list[RequirementChunk] = []
         for page, raw_text in document.pages:
@@ -21,7 +26,21 @@ class RequirementChunker:
             text = raw_text.replace("\r\n", "\n").strip()
             if not text:
                 continue
-            for block in re.split(r"\n\s*\n", text):
+            blocks: list[str] = []
+            for paragraph in re.split(r"\n\s*\n", text):
+                lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+                if any(_TABLE_ITEM.match(line) for line in lines):
+                    current: list[str] = []
+                    for line in lines:
+                        if current and _TABLE_ITEM.match(line):
+                            blocks.append("\n".join(current))
+                            current = []
+                        current.append(line)
+                    if current:
+                        blocks.append("\n".join(current))
+                else:
+                    blocks.append(paragraph)
+            for block in blocks:
                 normalized = " ".join(block.split())
                 if not normalized:
                     continue
