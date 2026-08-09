@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     vlm_max_frames: int = 8
     vlm_max_image_edge: int = 1280
     vlm_max_output_tokens: int = 512
+    embedding_api_key: str | None = None
+    embedding_base_url: str | None = None
+    embedding_model: str = "text-embedding-3-small"
+    chroma_path: str = ".data/requirements-rag.json"
+    rag_top_k: int = 5
 
 
 @lru_cache

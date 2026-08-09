@@ -4,7 +4,7 @@ import hashlib
 import json
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
@@ -13,6 +13,12 @@ from app.domain.requirements_rag import RequirementManifestEntry
 
 class AuthoritativeSource(RequirementManifestEntry):
     role: StrictStr = Field(min_length=1)
+    source_level: Literal["main", "supplemental", "background"]
+    extraction_status: StrictStr = "not_downloaded"
+    source_pdf_sha256: StrictStr | None = None
+    parser_version: StrictStr | None = None
+    derived_text_sha256: StrictStr | None = None
+    human_review_status: StrictStr | None = None
 
 
 AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
@@ -26,6 +32,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
         role="building_ppe",
+        source_level="main",
     ),
     AuthoritativeSource(
         document_id="gb-39800-1-2020",
@@ -37,16 +44,18 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
         role="general_ppe",
+        source_level="supplemental",
     ),
     AuthoritativeSource(
         document_id="construction-worker-ppe-guide-2021",
         title="建筑工人施工现场劳动保护基本配置指南",
         publisher="中华人民共和国中央人民政府",
         source_url="https://www.gov.cn/zhengce/zhengceku/2021-01/19/5580999/files/10d98ecac8cd4c68a887b0519b56768b.pdf",
-        effective_date=date(2021, 1, 19),
+        effective_date=None,
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
         role="field_reference",
+        source_level="supplemental",
     ),
     AuthoritativeSource(
         document_id="gb-55034-2022",
@@ -58,6 +67,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
         role="safety_general",
+        source_level="supplemental",
     ),
     AuthoritativeSource(
         document_id="samr-ppe-enforcement-2025-77",
@@ -68,6 +78,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
         role="enforcement_context",
+        source_level="background",
     ),
 )
 
@@ -94,4 +105,4 @@ def load_manifest(path: str | Path) -> tuple[AuthoritativeSource, ...]:
     raw: Any = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("manifest must contain a list")
-    return tuple(AuthoritativeSource.model_validate(item) for item in raw)
+    return tuple(AuthoritativeSource.model_validate_strings(item) for item in raw)

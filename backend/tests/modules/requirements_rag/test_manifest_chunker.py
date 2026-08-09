@@ -18,6 +18,11 @@ def test_manifest_contains_five_sources_with_non_overlapping_roles() -> None:
     }
     assert all(source.source_url.startswith("https://") for source in AUTHORITATIVE_SOURCES)
     assert all(source.hash_strategy for source in AUTHORITATIVE_SOURCES)
+    levels = {source.document_id: source.source_level for source in AUTHORITATIVE_SOURCES}
+    assert levels["gb-39800-12-2025"] == "main"
+    assert levels["construction-worker-ppe-guide-2021"] == "supplemental"
+    assert levels["samr-ppe-enforcement-2025-77"] == "background"
+    assert next(source for source in AUTHORITATIVE_SOURCES if source.role == "field_reference").effective_date is None
 
 
 def test_chunker_splits_sections_and_produces_stable_traceable_hashes() -> None:
@@ -54,6 +59,31 @@ def test_chunker_rejects_empty_document_and_missing_page_metadata() -> None:
                 pages=[(1, "   ")],
             )
         )
+
+
+def test_chunker_keeps_table_items_separate_and_rejects_unsafe_extraction() -> None:
+    document = RequirementDocument(
+        document_id="table",
+        title="建筑 PPE 表",
+        source_url="https://example.test/table",
+        pages=[
+            (
+                1,
+                "第4项 钢筋人工搬运：应使用机械手套。\n"
+                "第6项 转动机械/金属切割：应使用眼面防护。\n"
+                "第11项 车辆作业：应穿高可视服。",
+            )
+        ],
+    )
+    chunks = RequirementChunker().split(document)
+    assert len(chunks) == 3
+    assert any("机械手套" in chunk.content for chunk in chunks)
+    assert any("眼面防护" in chunk.content for chunk in chunks)
+    assert any("高可视服" in chunk.content for chunk in chunks)
+
+    unsafe = document.model_copy(update={"extraction_status": "needs_ocr"})
+    with pytest.raises(ValueError, match="extraction"):
+        RequirementChunker().split(unsafe)
     with pytest.raises(ValueError, match="page"):
         RequirementChunker().split(
             RequirementDocument(

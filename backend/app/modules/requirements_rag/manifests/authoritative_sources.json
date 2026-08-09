@@ -8,7 +8,8 @@
     "effective_date": "2026-07-01",
     "status": "official",
     "hash_strategy": "sha256-normalized-utf8-content",
-    "role": "building_ppe"
+    "role": "building_ppe",
+    "source_level": "main"
   },
   {
     "document_id": "gb-39800-1-2020",
@@ -19,17 +20,19 @@
     "effective_date": "2022-01-01",
     "status": "official",
     "hash_strategy": "sha256-normalized-utf8-content",
-    "role": "general_ppe"
+    "role": "general_ppe",
+    "source_level": "supplemental"
   },
   {
     "document_id": "construction-worker-ppe-guide-2021",
     "title": "建筑工人施工现场劳动保护基本配置指南",
     "publisher": "中华人民共和国中央人民政府",
     "source_url": "https://www.gov.cn/zhengce/zhengceku/2021-01/19/5580999/files/10d98ecac8cd4c68a887b0519b56768b.pdf",
-    "effective_date": "2021-01-19",
+    "effective_date": null,
     "status": "official",
     "hash_strategy": "sha256-normalized-utf8-content",
-    "role": "field_reference"
+    "role": "field_reference",
+    "source_level": "supplemental"
   },
   {
     "document_id": "gb-55034-2022",
@@ -40,7 +43,8 @@
     "effective_date": "2023-06-01",
     "status": "official",
     "hash_strategy": "sha256-normalized-utf8-content",
-    "role": "safety_general"
+    "role": "safety_general",
+    "source_level": "supplemental"
   },
   {
     "document_id": "samr-ppe-enforcement-2025-77",
@@ -50,6 +54,7 @@
     "effective_date": "2025-01-01",
     "status": "official",
     "hash_strategy": "sha256-normalized-utf8-content",
-    "role": "enforcement_context"
+    "role": "enforcement_context",
+    "source_level": "background"
   }
 ]
