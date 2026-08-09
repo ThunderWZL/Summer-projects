@@ -17,7 +17,14 @@ class VectorStorePort(Protocol):
         metadata: IndexMetadata,
     ) -> tuple[int, int, bool]: ...
 
-    def search(self, vector: Sequence[float], top_k: int) -> list[RequirementChunk]: ...
+    def search(
+        self,
+        vector: Sequence[float],
+        top_k: int | None,
+        *,
+        as_of: date | None = None,
+        include_background: bool = False,
+    ) -> list[RequirementChunk]: ...
 
     def clear(self) -> None: ...
 
@@ -85,7 +92,14 @@ class PersistentVectorStore:
         self._write({"metadata": metadata.model_dump(mode="json"), "records": records})
         return indexed, skipped, rebuilt
 
-    def search(self, vector: Sequence[float], top_k: int) -> list[RequirementChunk]:
+    def search(
+        self,
+        vector: Sequence[float],
+        top_k: int | None,
+        *,
+        as_of: date | None = None,
+        include_background: bool = False,
+    ) -> list[RequirementChunk]:
         current = self._read()
         if not current:
             return []
@@ -99,6 +113,14 @@ class PersistentVectorStore:
             raw_chunk = dict(record["chunk"])
             if raw_chunk.get("effective_date"):
                 raw_chunk["effective_date"] = date.fromisoformat(raw_chunk["effective_date"])
-            scored.append((score, chunk_id, RequirementChunk.model_validate(raw_chunk)))
+            chunk = RequirementChunk.model_validate(raw_chunk)
+            if as_of is not None and (
+                chunk.effective_date is None or chunk.effective_date > as_of
+            ):
+                continue
+            if not include_background and chunk.source_level == "background":
+                continue
+            scored.append((score, chunk_id, chunk))
         scored.sort(key=lambda item: (-item[0], item[1]))
-        return [chunk for _, _, chunk in scored[:top_k]]
+        ordered = [chunk for _, _, chunk in scored]
+        return ordered if top_k is None else ordered[:top_k]

@@ -36,6 +36,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         role="building_ppe",
         source_level="main",
         source_pdf_sha256="56c7c8407be2a03d5f149c1fc024f0101313465cf6470b7cf173ba4e7b919706",
+        source_artifact_sha256="56c7c8407be2a03d5f149c1fc024f0101313465cf6470b7cf173ba4e7b919706",
     ),
     AuthoritativeSource(
         document_id="gb-39800-1-2020",
@@ -50,6 +51,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         role="general_ppe",
         source_level="supplemental",
         source_pdf_sha256="2bd38a9b27ca9b214a2573ec6ae4c7940932e18f9d2bbf91dfa27db819330de5",
+        source_artifact_sha256="2bd38a9b27ca9b214a2573ec6ae4c7940932e18f9d2bbf91dfa27db819330de5",
     ),
     AuthoritativeSource(
         document_id="construction-worker-ppe-guide-2021",
@@ -63,6 +65,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         role="field_reference",
         source_level="supplemental",
         source_pdf_sha256="a75e86011fb12cd8d2eb51cb129d027f77cf014351082fb31ce13eb37ca24d65",
+        source_artifact_sha256="a75e86011fb12cd8d2eb51cb129d027f77cf014351082fb31ce13eb37ca24d65",
     ),
     AuthoritativeSource(
         document_id="gb-55034-2022",
@@ -78,6 +81,7 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         role="safety_general",
         source_level="supplemental",
         source_pdf_sha256="f3c3f4dad8954b53c20c95a801b592adf843c28867caf596b2c9f9851c9c593e",
+        source_artifact_sha256="f3c3f4dad8954b53c20c95a801b592adf843c28867caf596b2c9f9851c9c593e",
     ),
     AuthoritativeSource(
         document_id="samr-ppe-enforcement-2025-77",

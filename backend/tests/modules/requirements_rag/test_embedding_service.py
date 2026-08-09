@@ -165,8 +165,11 @@ def test_source_level_filter_happens_before_top_k_cutoff() -> None:
         def index(self, chunks, vectors, metadata):
             return (0, 0, False)
 
-        def search(self, vector, top_k):
-            return [background, main]
+        def search(self, vector, top_k, *, as_of=None, include_background=False):
+            candidates = [background, main]
+            if not include_background:
+                candidates = [chunk for chunk in candidates if chunk.source_level != "background"]
+            return candidates[:top_k] if top_k is not None else candidates
 
         def clear(self):
             pass
@@ -195,3 +198,38 @@ def test_search_rejects_embedder_model_mismatch(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="model"):
         changed.search(RequirementQuery(q="安全帽"))
+
+
+def test_filtering_is_applied_inside_store_before_top_k_cutoff() -> None:
+    future = [
+        _chunk(f"future-{index}", f"未来条款{index}").model_copy(
+            update={"source_level": "main", "effective_date": date(2030, 1, 1)}
+        )
+        for index in range(21)
+    ]
+    background = _chunk("background", "背景条款").model_copy(update={"source_level": "background"})
+    valid = _chunk("valid", "已生效主证据").model_copy(update={"source_level": "main", "effective_date": date(2024, 1, 1)})
+
+    class LimitedStore:
+        def index(self, chunks, vectors, metadata):
+            return (0, 0, False)
+
+        def search(self, vector, top_k, *, as_of=None, include_background=False):
+            candidates = [*future, background, valid]
+            if as_of is not None:
+                candidates = [chunk for chunk in candidates if chunk.effective_date and chunk.effective_date <= as_of]
+            if not include_background:
+                candidates = [chunk for chunk in candidates if chunk.source_level != "background"]
+            return candidates[:top_k] if top_k is not None else candidates
+
+        def clear(self):
+            pass
+
+    service = RequirementsRagService(
+        store=LimitedStore(),
+        embedder=DeterministicEmbeddingClient(dimension=8),
+    )
+
+    citations = service.search(RequirementQuery(q="PPE", top_k=1, as_of=date(2025, 1, 1)))
+
+    assert [citation.excerpt for citation in citations] == ["已生效主证据"]
