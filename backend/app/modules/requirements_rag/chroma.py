@@ -104,7 +104,9 @@ class ChromaVectorStore:
     ) -> list[RequirementChunk]:
         collection = self.connect()
         count = collection.count()
-        result = collection.query(query_embeddings=[list(vector)], n_results=top_k or count)
+        if count == 0:
+            return []
+        result = collection.query(query_embeddings=[list(vector)], n_results=count)
         metadatas = (result.get("metadatas") or [[]])[0]
         chunks: list[RequirementChunk] = []
         for metadata in metadatas:

@@ -209,6 +209,11 @@
   * 实现：检索不再使用固定候选上限；冷启动 Chroma metadata 主动连接现有 collection，恢复 embedding model、维度、manifest 与 corpus 校验。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_embedding_service.py tests/modules/requirements_rag/test_html_artifact.py tests/modules/requirements_rag/test_chroma_lazy.py -q`，12 项通过；`git diff --check`，通过。
 
+* 20:51 `fix(rag): 修复 Chroma 全量候选过滤`
+  * 完成：Chroma 检索先以 collection.count() 请求完整候选集，再按生效日期、来源级别过滤和 top_k 截断；空 collection 直接返回空结果。
+  * 实现：消除 Chroma 路径中 `n_results=top_k` 的预截断，确保第 21 条有效主证据不会被前 20 条未来/背景条款遮蔽。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py::test_chroma_search_queries_all_rows_before_filtering_top_k tests/modules/requirements_rag/test_chroma_lazy.py::test_chroma_search_empty_collection_returns_without_querying -q`，2 项通过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
