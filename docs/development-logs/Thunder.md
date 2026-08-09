@@ -100,3 +100,24 @@
 
 * 将任务分支合并到 `dev` 后通知 Wuweizhe 和 Thxnks 同步，并要求两人分别确认 ML 生产字段与数据库、页面消费字段不再缺失。
 * 后续每个真实开发日继续按提交追加记录，最终交付前再次检查 8 天要求。
+
+## 2026-08-09
+
+### 当日目标
+
+* 完成 VLM 复核核心（切片 1），打通"候选 → 复核 → 状态机"链路，并补上 `CaseStorePort` 按候选查询能力。
+
+### 开发记录
+
+* 13:35 `feat(vlm): 实现VLM复核解析、固定适配器与配置`
+  * 完成：新增 VLM 复核核心三个模块——严格解析器、固定答案适配器与集中配置，并补齐对应测试。
+  * 实现：`parser` 将模型输出严格校验为 `VlmReviewResult`，模型身份字段一律由请求上下文回填、不信任模型自报；`FixedVlmAdapter` 确定性输出结论，AUTO 按候选证据充分性决策，confirm/reject/uncertain 场景强制复现；`config` 集中 `VLM_*` 环境变量并保留 `.env.example`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review/test_parser.py tests/modules/vlm_review/test_fixed_adapter.py tests/modules/vlm_review/test_config.py`，14 项通过；`git diff --check`，通过。
+
+### 问题与处理
+
+* 无。
+
+### 后续计划
+
+* 实现 VLM 复核编排服务，并为 `CaseStorePort` 增加按候选查询事件的能力（公共接口变更，独立提交并通知郝欣冉确认仓储实现包含该方法）。
