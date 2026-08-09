@@ -131,6 +131,10 @@
   * 完成：新增业务上下文只读端口与七类共享值模型，作为 Agent 调查工具与 `/api/v1/demo/*` 的数据来源，也是郝欣冉 X-01 种子数据必须产出的值模型集合。
   * 实现：`site_context.py` 定义 `ZoneInfo/CameraInfo/VideoInfo/WorkPermit/TaskPpeMatrix/ResponsibleParty/DemoUser`（全部 `extra="forbid"` 严格校验，字段语义对齐设计文档 §6.2），端口 `SiteContextPort`（get_zone_at / find_active_work_permits / get_task_ppe_matrix / list_eligible_responsible_parties / list_videos / get_video）与 `UserDirectoryPort.get`；端口只读，禁止通过端口写入业务数据。
   * 验证：`cd backend && .venv/bin/python -m pytest`，88 项通过；`git diff --check`，通过。
+* 14:16 `feat(domain): 六路通道内存种子与演示用户目录`
+  * 完成：新增设计文档 §8.1 六路通道的内存种子化业务上下文与演示用户目录，并补齐 13 项领域测试。
+  * 实现：`inmemory/site_context.py` 种子六路 `camera→zone→task`（CAM-01 脚手架区无许可、CAM-02 切割+眼部危害、CAM-03 搬运钢筋+手部危害、CAM-04 旋转设备+卷入风险→矩阵注明不简单要求戴手套、CAM-05 车辆区、CAM-06 普通许可）；许可窗口 08:00–18:00，`find_active_work_permits` 按区域+窗口过滤；`inmemory/actor_roles.py` 提供 `officer-01` 安全员、`reviewer-01` 审核人，同时满足角色与用户目录端口。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，101 项通过；`git diff --check`，通过。
 
 ### 问题与处理
 
