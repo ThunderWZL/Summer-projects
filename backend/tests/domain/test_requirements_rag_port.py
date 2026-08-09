@@ -51,6 +51,7 @@ def test_chunk_and_index_report_reject_unknown_fields() -> None:
         manifest_fingerprint="b" * 64,
         embedding_model="fake",
         vector_dimension=8,
+        corpus_fingerprint="c" * 64,
     )
     assert report.indexed_chunks == 1
     with pytest.raises(ValidationError):

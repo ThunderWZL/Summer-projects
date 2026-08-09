@@ -179,6 +179,11 @@
   * 实现：配置指南生效日保持空值，扫描或乱码正文不进入 chunker；表项逐行切分，查询支持 `as_of`，Citation section 统一包含条款与印刷页/PDF 页定位。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_manifest_chunker.py tests/modules/requirements_rag/test_embedding_service.py -q`，9 项通过；真实 RAG 未运行（未配置密钥与下载语料）。
 
+* 19:28 `fix(domain): 扩展权威语料与页码索引契约`
+  * 完成：为公共模型增加 `corpus_fingerprint`、来源级别/角色、实际 PDF 页与可选印刷页、分页输入和显式背景查询模式。
+  * 实现：Index metadata/report 现在可审计实际语料指纹；chunk 保留来源 provenance，旧 `page` 输入保持兼容并规范化到 `pdf_page`。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/domain/test_requirements_rag_port.py tests/modules/requirements_rag/test_acceptance_regressions.py -q`，5 项通过；`git diff --check`，通过。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
