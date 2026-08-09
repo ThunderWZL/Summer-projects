@@ -209,6 +209,11 @@
   * 实现：检索不再使用固定候选上限；冷启动 Chroma metadata 主动连接现有 collection，恢复 embedding model、维度、manifest 与 corpus 校验。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest tests/modules/requirements_rag/test_embedding_service.py tests/modules/requirements_rag/test_html_artifact.py tests/modules/requirements_rag/test_chroma_lazy.py -q`，12 项通过；`git diff --check`，通过。
 
+* 20:49 `chore(env): 补充后端测试环境安装入口`
+  * 完成：新增后端测试环境 requirements 入口，缺少 pytest 的环境可一次安装项目运行依赖和 `dev` 测试依赖。
+  * 实现：`requirements-dev.txt` 通过 `.[dev]` 复用 `pyproject.toml` 的版本声明，避免维护两份依赖版本；确认 `AGENTS.md` 当前没有自动安装 requirements 的指令。
+  * 验证：`python3 -m pip install --dry-run --break-system-packages -r requirements-dev.txt`，成功解析包括 pytest 8.4.2 和 HTTPX 0.28.1 在内的完整环境且未实际安装；`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest`，160 项通过、1 项真实 RAG 因无密钥跳过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
+
 * 20:51 `fix(rag): 修复 Chroma 全量候选过滤`
   * 完成：Chroma 检索先以 collection.count() 请求完整候选集，再按生效日期、来源级别过滤和 top_k 截断；空 collection 直接返回空结果。
   * 实现：消除 Chroma 路径中 `n_results=top_k` 的预截断，确保第 21 条有效主证据不会被前 20 条未来/背景条款遮蔽。

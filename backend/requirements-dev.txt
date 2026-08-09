@@ -1,0 +1,3 @@
+# Run from backend/: python -m pip install -r requirements-dev.txt
+# Dependency versions remain single-sourced in pyproject.toml.
+-e .[dev]
