@@ -78,6 +78,8 @@ class StaleCaseVersion(CaseWorkflowError):
     code = "STALE_CASE_VERSION"
 
     def __init__(self, expected: int, current: int) -> None:
+        self.expected = expected
+        self.current = current
         super().__init__(f"expected version {expected}, current {current}")
 
 
