@@ -612,6 +612,26 @@ class VideoInferenceRunnerTest(unittest.TestCase):
 
         self.assertTrue(capture.released)
 
+    def test_worker_start_failure_releases_video_capture(self):
+        capture = FakeCapture(
+            [np.zeros((2, 2, 3), dtype=np.uint8)],
+            fps=10.0,
+        )
+        runner = VideoInferenceRunner(
+            FakeModel(),
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+        )
+
+        with patch(
+            "video_inference.Thread.start",
+            side_effect=RuntimeError("worker start failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "worker start failed"):
+                next(runner.iter_video(Path("fixture.mp4"), realtime=True))
+
+        self.assertTrue(capture.released)
+
     def test_releases_invalid_capture(self):
         capture = FakeCapture([], opened=False)
         runner = VideoInferenceRunner(

@@ -165,8 +165,14 @@
   * 完成：强化慢 AI 组合回归，验证完整十帧播放流持续复用最近分析，并在后台新结果到达后更新检测与标注像素。
   * 实现：分阶段阻塞和释放 2、6、8 号采样帧，确认 4 号旧待处理样本被替换；通过公共输出同时断言人员轨迹 ID 和标注像素从 100 更新到 102、106，且帧序与时间戳完整。
   * 验证：`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，17 项通过；`git diff --check`，通过；ML 未配置全局 lint 或构建命令，未运行。
+* 21:57 `fix(ml): 释放启动失败的视频资源`
+  * 完成：修复后台推理线程启动异常时视频捕获句柄未释放的问题，并增加公共生成器级回归测试。
+  * 实现：将 worker 启动纳入 `iter_video()` 资源保护范围，仅对成功启动的线程执行关闭；线程启动失败时保留原始异常并在外层 `finally` 释放 capture。
+  * 验证：`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，18 项通过；`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m py_compile ml/video_inference.py`，通过；`git diff --check`，通过；ML 未配置全局 lint 或构建命令，未运行。
 
 ### 问题与处理
+
+* `worker.start()` 原位于 capture 资源保护范围外，线程创建失败会泄漏视频句柄；通过启动状态标记与外层 `finally` 修复，并保留原始启动异常。
 
 * 18:52 `feat(domain): 定义权威依据检索公共端口`
   * 完成：新增严格 Pydantic 的 `RequirementQuery`、`RequirementChunk`、`IndexMetadata`、`IndexReport` 与来源清单模型，并公开 `RequirementRetrieverPort.search`、`IndexerPort.index` 协议。
