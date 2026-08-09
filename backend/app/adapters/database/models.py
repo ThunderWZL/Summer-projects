@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PythonEnum
 from typing import Any
 
@@ -44,7 +44,7 @@ class TimezoneAwareDateTime(TypeDecorator[datetime]):
             return None
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("timezone-aware datetime is required")
-        return value.isoformat()
+        return value.astimezone(timezone.utc).isoformat()
 
     def process_result_value(
         self, value: str | None, dialect: Any
