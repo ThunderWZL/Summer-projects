@@ -100,3 +100,37 @@
 
 * 将任务分支合并到 `dev` 后通知 Wuweizhe 和 Thxnks 同步，并要求两人分别确认 ML 生产字段与数据库、页面消费字段不再缺失。
 * 后续每个真实开发日继续按提交追加记录，最终交付前再次检查 8 天要求。
+
+## 2026-08-09
+
+### 当日目标
+
+* 完成 VLM 复核核心（切片 1），打通"候选 → 复核 → 状态机"链路，并补上 `CaseStorePort` 按候选查询能力。
+
+### 开发记录
+
+* 13:35 `feat(vlm): 实现VLM复核解析、固定适配器与配置`
+  * 完成：新增 VLM 复核核心三个模块——严格解析器、固定答案适配器与集中配置，并补齐对应测试。
+  * 实现：`parser` 将模型输出严格校验为 `VlmReviewResult`，模型身份字段一律由请求上下文回填、不信任模型自报；`FixedVlmAdapter` 确定性输出结论，AUTO 按候选证据充分性决策，confirm/reject/uncertain 场景强制复现；`config` 集中 `VLM_*` 环境变量并保留 `.env.example`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review/test_parser.py tests/modules/vlm_review/test_fixed_adapter.py tests/modules/vlm_review/test_config.py`，14 项通过；`git diff --check`，通过。
+
+* 13:38 `feat(domain): CaseStorePort 支持按候选查询事件`
+  * 完成：为 `CaseStorePort` 追加只读方法 `find_by_candidate`，用于按候选定位事件，作为 VLM 复核服务的数据入口。
+  * 实现：在 `case_workflow.py` 的端口协议上增加一个查询方法，纯加法不影响既有 `get`/`commit` 行为；该接口为公共接口，独立提交并通知郝欣冉在数据库仓储实现中同步该方法。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_case_workflow.py`，20 项通过；`git diff --check`，通过。
+* 13:42 `feat(vlm): 实现VLM复核编排服务`
+  * 完成：新增 `VlmReviewService`，串起"按候选找事件 → 构造请求 → 模型复核 → 严格解析 → 状态机"，并补齐服务测试。
+  * 实现：service 只依赖 `VlmModelPort` 协议，换真实模型不改 service 与状态机；解析失败统一落成 UNCERTAIN 复核走 `VLM_REJECTED`，不让脏输出进入事件状态；候选无事件抛 `CandidateNotFound`。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，87 项通过；`git diff --check`，通过。
+* 13:49 `fix(vlm): 复核解析拒绝负数播放位置`
+  * 完成：为 `VlmReviewResult.evidence_timestamps_ms` 增加非负兜底校验，阻塞负数毫秒进入状态机。
+  * 实现：冻结契约未对该字段约束非负，解析层显式检查负数即抛 `VlmParseError`，由 service 统一落成 UNCERTAIN → VLM_REJECTED；不修改 contracts.py。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，88 项通过；`git diff --check`，通过。
+
+### 问题与处理
+
+* 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
+
+### 后续计划
+
+* 合并 `feat/vlm-review-core` 到 `dev` 后，进入切片 2（业务上下文端口，含共享接口，需尽早通知郝欣冉）。
