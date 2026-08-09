@@ -148,6 +148,29 @@ class SlowAfterWarmupModel(FakeModel):
         return [FakeResult()]
 
 
+class StagedAfterWarmupModel(FakeModel):
+    def __init__(self):
+        super().__init__()
+        self.source_values = []
+        self.entered = {}
+        self.releases = {}
+
+    def track(self, **kwargs):
+        self.calls.append(kwargs)
+        source_value = int(kwargs["source"][0, 0, 0])
+        self.source_values.append(source_value)
+        if len(self.calls) > 1:
+            self.entered.setdefault(source_value, Event()).set()
+            self.releases.setdefault(source_value, Event()).wait(timeout=2)
+        return [FakeResult(track_id=100 + source_value)]
+
+    def wait_until_entered(self, source_value):
+        return self.entered.setdefault(source_value, Event()).wait(timeout=1)
+
+    def release(self, source_value):
+        self.releases.setdefault(source_value, Event()).set()
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -341,6 +364,49 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertGreaterEqual(elapsed, 0.16)
         self.assertLess(elapsed, 0.8)
 
+    def test_slow_realtime_stream_waits_again_after_a_late_frame(self):
+        capture = FakeCapture(
+            [np.full((2, 2, 3), index, dtype=np.uint8) for index in range(5)],
+            fps=10.0,
+        )
+        model = SlowAfterWarmupModel()
+        clock = FakeClock()
+
+        def render(frame, _detections):
+            if int(frame[0, 0, 0]) == 3:
+                clock.now += 0.35
+            return frame.copy()
+
+        runner = VideoInferenceRunner(
+            model,
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=render,
+            worker_shutdown_timeout_seconds=1.0,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+        stream = runner.iter_video(Path("fixture.mp4"), realtime=True)
+
+        arrival_times = [clock.now]
+        output = [next(stream)]
+        for _ in range(2):
+            output.append(next(stream))
+            arrival_times.append(clock.now)
+        self.assertTrue(model.entered.wait(timeout=1))
+        for _ in range(2):
+            output.append(next(stream))
+            arrival_times.append(clock.now)
+        model.release.set()
+        with self.assertRaises(StopIteration):
+            next(stream)
+
+        self.assertEqual([frame.frame_index for frame in output], list(range(5)))
+        self.assertAlmostEqual(arrival_times[3], 0.55)
+        self.assertAlmostEqual(arrival_times[4] - arrival_times[3], 0.1)
+        self.assertTrue(all(delay > 0 for delay in clock.sleeps))
+        self.assertTrue(capture.released)
+
     def test_renderer_changes_pixels_without_mutating_original_frame(self):
         capture = FakeCapture([])
         runner = VideoInferenceRunner(
@@ -412,18 +478,24 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertEqual(output[0].analysis_timestamp_ms, 0)
         self.assertEqual(output[0].person_track_ids, (17,))
 
-    def test_slow_realtime_ai_does_not_block_complete_frame_output(self):
+    def test_slow_realtime_ai_reuses_latest_overlay_without_blocking_frames(self):
         source_frames = [
-            np.full((2, 2, 3), index, dtype=np.uint8) for index in range(8)
+            np.full((2, 2, 3), index, dtype=np.uint8) for index in range(10)
         ]
         capture = FakeCapture(source_frames, fps=10.0)
-        model = SlowAfterWarmupModel()
+        model = StagedAfterWarmupModel()
         clock = FakeClock()
+
+        def render(frame, detections):
+            annotated = frame.copy()
+            annotated[0, 0, 0] = detections[0].track_id if detections else 0
+            return annotated
+
         runner = VideoInferenceRunner(
             model,
             cv2_module=FakeCv2(capture),
             target_fps=5.0,
-            renderer=lambda frame, _detections: frame.copy(),
+            renderer=render,
             worker_shutdown_timeout_seconds=1.0,
             monotonic=clock.monotonic,
             sleep=clock.sleep,
@@ -431,23 +503,35 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         stream = runner.iter_video(Path("fixture.mp4"), realtime=True)
 
         output = [next(stream) for _ in range(3)]
-        self.assertTrue(model.entered.wait(timeout=1))
-        output.extend(next(stream) for _ in range(5))
-        model.release.set()
-        deadline = time.monotonic() + 1
-        while len(model.source_values) < 3 and time.monotonic() < deadline:
-            time.sleep(0.01)
+        self.assertTrue(model.wait_until_entered(2))
+        output.extend(next(stream) for _ in range(4))
+        model.release(2)
+        self.assertTrue(model.wait_until_entered(6))
+        output.append(next(stream))
+        model.release(6)
+        output.append(next(stream))
+        self.assertTrue(model.wait_until_entered(8))
+        output.append(next(stream))
+        model.release(8)
         with self.assertRaises(StopIteration):
             next(stream)
 
-        self.assertEqual([frame.frame_index for frame in output], list(range(8)))
+        self.assertEqual([frame.frame_index for frame in output], list(range(10)))
         self.assertEqual(
             [frame.timestamp_ms for frame in output],
-            [0, 100, 200, 300, 400, 500, 600, 700],
+            [0, 100, 200, 300, 400, 500, 600, 700, 800, 900],
         )
-        self.assertEqual(model.source_values, [0, 2, 6])
-        self.assertTrue(
-            all(frame.annotated_frame.shape == (2, 2, 3) for frame in output)
+        self.assertEqual(model.source_values, [0, 2, 6, 8])
+        self.assertEqual(
+            [frame.person_track_ids for frame in output[:7]],
+            [(100,)] * 7,
+        )
+        self.assertEqual(output[7].person_track_ids, (102,))
+        self.assertIn(output[8].person_track_ids, ((102,), (106,)))
+        self.assertEqual(output[9].person_track_ids, (106,))
+        self.assertEqual(
+            [int(frame.annotated_frame[0, 0, 0]) for frame in output],
+            [frame.person_track_ids[0] for frame in output],
         )
         self.assertTrue(capture.released)
 
@@ -525,6 +609,26 @@ class VideoInferenceRunnerTest(unittest.TestCase):
                 next(stream)
         finally:
             model.release.set()
+
+        self.assertTrue(capture.released)
+
+    def test_worker_start_failure_releases_video_capture(self):
+        capture = FakeCapture(
+            [np.zeros((2, 2, 3), dtype=np.uint8)],
+            fps=10.0,
+        )
+        runner = VideoInferenceRunner(
+            FakeModel(),
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+        )
+
+        with patch(
+            "video_inference.Thread.start",
+            side_effect=RuntimeError("worker start failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "worker start failed"):
+                next(runner.iter_video(Path("fixture.mp4"), realtime=True))
 
         self.assertTrue(capture.released)
 
