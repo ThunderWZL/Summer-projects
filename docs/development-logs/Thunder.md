@@ -114,10 +114,15 @@
   * 实现：`parser` 将模型输出严格校验为 `VlmReviewResult`，模型身份字段一律由请求上下文回填、不信任模型自报；`FixedVlmAdapter` 确定性输出结论，AUTO 按候选证据充分性决策，confirm/reject/uncertain 场景强制复现；`config` 集中 `VLM_*` 环境变量并保留 `.env.example`。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review/test_parser.py tests/modules/vlm_review/test_fixed_adapter.py tests/modules/vlm_review/test_config.py`，14 项通过；`git diff --check`，通过。
 
+* 13:38 `feat(domain): CaseStorePort 支持按候选查询事件`
+  * 完成：为 `CaseStorePort` 追加只读方法 `find_by_candidate`，用于按候选定位事件，作为 VLM 复核服务的数据入口。
+  * 实现：在 `case_workflow.py` 的端口协议上增加一个查询方法，纯加法不影响既有 `get`/`commit` 行为；该接口为公共接口，独立提交并通知郝欣冉在数据库仓储实现中同步该方法。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_case_workflow.py`，20 项通过；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 无。
 
 ### 后续计划
 
-* 实现 VLM 复核编排服务，并为 `CaseStorePort` 增加按候选查询事件的能力（公共接口变更，独立提交并通知郝欣冉确认仓储实现包含该方法）。
+* 实现 VLM 复核编排服务，串起候选查询、模型调用、解析与状态机。
