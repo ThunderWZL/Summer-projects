@@ -12,6 +12,10 @@
   * 完成：建立业务上下文、分析会话、整改事件、机器处理链和人工审计所需的 SQLAlchemy 数据模型。
   * 实现：为 SQLite 启用外键约束，使用带时区 ISO 时间类型保留业务时间，并为候选到事件的一对一关系增加唯一约束。
   * 验证：`.venv\Scripts\python.exe -m pytest tests/adapters/database/test_models.py -q`，3 项测试通过。
+* 22:36 `feat(seed): 添加六路确定性演示数据`
+  * 完成：提供可重复执行的 SQLite 初始化入口，写入六路区域、摄像头、视频、许可、任务矩阵、责任主体和演示用户。
+  * 实现：复用冻结的内存业务上下文生成数据库种子，保留 CAM-01 无许可、CAM-03/04 手套要求差异和 CAM-06 无额外 PPE 的演示语义。
+  * 验证：`.venv\Scripts\python.exe -m app.adapters.database.seed --database-url sqlite:///:memory:`，成功生成 6 路上下文；`.venv\Scripts\python.exe -m pytest`，167 项通过、1 项因需要真实 RAG 凭据跳过。
 
 ### 问题与处理
 
@@ -19,4 +23,4 @@
 
 ### 后续计划
 
-* 完成六路确定性种子、初始化入口和幂等性验证。
+* 等待 X-01 验收；通过后实现 SQLAlchemy `CaseStore` 和事务测试。
