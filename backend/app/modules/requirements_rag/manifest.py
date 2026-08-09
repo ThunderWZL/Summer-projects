@@ -14,6 +14,7 @@ from app.domain.requirements_rag import RequirementManifestEntry
 class AuthoritativeSource(RequirementManifestEntry):
     role: StrictStr = Field(min_length=1)
     source_level: Literal["main", "supplemental", "background"]
+    verification_url: StrictStr | None = None
     extraction_status: StrictStr = "not_downloaded"
     source_pdf_sha256: StrictStr | None = None
     parser_version: StrictStr | None = None
@@ -62,7 +63,8 @@ AUTHORITATIVE_SOURCES: tuple[AuthoritativeSource, ...] = (
         title="建筑与市政施工现场安全卫生与职业健康通用规范",
         standard_no="GB 55034-2022",
         publisher="国家标准全文公开系统",
-        source_url="https://policy.mofcom.gov.cn/claw/clawContent.shtml?id=96208",
+        source_url="https://www.mohurd.gov.cn/gongkai/fdzdgknr/zfhcxjsbwj/202211/20221117_768953.html",
+        verification_url="https://policy.mofcom.gov.cn/claw/clawContent.shtml?id=96208",
         effective_date=date(2023, 6, 1),
         status="official",
         hash_strategy="sha256-normalized-utf8-content",
