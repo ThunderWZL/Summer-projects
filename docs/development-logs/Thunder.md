@@ -118,6 +118,10 @@
   * 完成：为 `CaseStorePort` 追加只读方法 `find_by_candidate`，用于按候选定位事件，作为 VLM 复核服务的数据入口。
   * 实现：在 `case_workflow.py` 的端口协议上增加一个查询方法，纯加法不影响既有 `get`/`commit` 行为；该接口为公共接口，独立提交并通知郝欣冉在数据库仓储实现中同步该方法。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_case_workflow.py`，20 项通过；`git diff --check`，通过。
+* 13:42 `feat(vlm): 实现VLM复核编排服务`
+  * 完成：新增 `VlmReviewService`，串起"按候选找事件 → 构造请求 → 模型复核 → 严格解析 → 状态机"，并补齐服务测试。
+  * 实现：service 只依赖 `VlmModelPort` 协议，换真实模型不改 service 与状态机；解析失败统一落成 UNCERTAIN 复核走 `VLM_REJECTED`，不让脏输出进入事件状态；候选无事件抛 `CandidateNotFound`。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，87 项通过；`git diff --check`，通过。
 
 ### 问题与处理
 
@@ -125,4 +129,4 @@
 
 ### 后续计划
 
-* 实现 VLM 复核编排服务，串起候选查询、模型调用、解析与状态机。
+* 切片 1 完成，验证"换适配器 service 一行不改"后，进入切片 2（业务上下文端口，含共享接口，需尽早通知郝欣冉）。
