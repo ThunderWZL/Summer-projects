@@ -147,6 +147,10 @@
   * 完成：挂载六路演示视频与业务上下文、事件列表与详情、四个人工命令和当前阶段依据检索 REST 接口，提供可直接演示的完整事件种子。
   * 实现：`deps.py` 统一组合内存上下文、仓储、用户目录、时钟和状态机；列表后端计算筛选分页、统计、逾期、紧急度与重复风险；详情聚合引用、人工提交和完整来源时间线；所有状态变化仅经 `CaseWorkflow.apply`，状态机异常稳定映射为冻结 `ErrorResponse`，版本冲突携带当前版本；视频内容使用支持范围请求的文件响应且不泄露本地路径。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，124 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 17:32 `test(api): 固定事件接口业务时钟`
+  * 完成：让事件 API 测试固定使用带时区的业务时间，避免未来日期变化导致期限与逾期断言漂移。
+  * 实现：通过 FastAPI 公共依赖覆盖替换时钟系统边界，每项测试结束后恢复应用依赖，不修改生产时钟行为。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_cases_api.py`，10 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，124 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查。
 
 ### 问题与处理
 

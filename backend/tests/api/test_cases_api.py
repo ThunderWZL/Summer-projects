@@ -1,14 +1,23 @@
 import asyncio
+from datetime import datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_case_store
+from app.api.deps import get_case_store, get_clock
 from app.main import app
+
+
+NOW = datetime.fromisoformat("2026-08-09T10:00:00+08:00")
 
 
 def setup_function() -> None:
     get_case_store.cache_clear()
+    app.dependency_overrides[get_clock] = lambda: lambda: NOW
+
+
+def teardown_function() -> None:
+    app.dependency_overrides.pop(get_clock, None)
 
 
 async def request(method: str, path: str, json: dict | None = None):
