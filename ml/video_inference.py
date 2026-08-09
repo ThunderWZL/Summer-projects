@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Full, Queue
+from tempfile import TemporaryDirectory
 from threading import Lock, Thread
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -465,7 +467,7 @@ def write_annotated_video(
     realtime: bool = False,
     max_playback_frames: int | None = None,
 ) -> VideoOutputSummary:
-    """Write every annotated playback frame to a new MP4 file."""
+    """Write every annotated playback frame and preserve the source audio."""
 
     if video_path.resolve() == output_path.resolve():
         raise ValueError("output video must not overwrite the input video")
@@ -476,45 +478,86 @@ def write_annotated_video(
             f"output video directory does not exist: {output_path.parent}"
         )
 
-    writer: Any | None = None
-    frame_count = 0
-    image_width = 0
-    image_height = 0
-    source_fps = 0.0
-    try:
-        for frame in runner.iter_video(
-            video_path,
-            realtime=realtime,
-            max_playback_frames=max_playback_frames,
-        ):
-            if writer is None:
-                image_width = frame.image_width
-                image_height = frame.image_height
-                source_fps = frame.source_fps
-                codec = runner.cv2.VideoWriter_fourcc(*"mp4v")
-                writer = runner.cv2.VideoWriter(
-                    str(output_path),
-                    codec,
-                    source_fps,
-                    (image_width, image_height),
-                )
-                if not writer.isOpened():
-                    raise ValueError(f"unable to open output video: {output_path}")
-            writer.write(frame.annotated_frame)
-            frame_count += 1
-    finally:
-        if writer is not None:
-            writer.release()
+    with TemporaryDirectory(
+        dir=output_path.parent,
+        prefix=".video-inference-",
+    ) as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        video_only_path = temporary_root / "annotated-video.mp4"
+        muxed_path = temporary_root / "annotated-output.mp4"
+        writer: Any | None = None
+        frame_count = 0
+        image_width = 0
+        image_height = 0
+        source_fps = 0.0
+        try:
+            for frame in runner.iter_video(
+                video_path,
+                realtime=realtime,
+                max_playback_frames=max_playback_frames,
+            ):
+                if writer is None:
+                    image_width = frame.image_width
+                    image_height = frame.image_height
+                    source_fps = frame.source_fps
+                    codec = runner.cv2.VideoWriter_fourcc(*"mp4v")
+                    writer = runner.cv2.VideoWriter(
+                        str(video_only_path),
+                        codec,
+                        source_fps,
+                        (image_width, image_height),
+                    )
+                    if not writer.isOpened():
+                        raise ValueError(
+                            f"unable to open output video: {output_path}"
+                        )
+                writer.write(frame.annotated_frame)
+                frame_count += 1
+        finally:
+            if writer is not None:
+                writer.release()
 
-    if frame_count == 0:
-        raise ValueError(f"input video contains no frames: {video_path}")
-    return VideoOutputSummary(
-        output_path=str(output_path),
-        frame_count=frame_count,
-        image_width=image_width,
-        image_height=image_height,
-        fps=source_fps,
-    )
+        if frame_count == 0:
+            raise ValueError(f"input video contains no frames: {video_path}")
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-n",
+                    "-i",
+                    str(video_only_path),
+                    "-i",
+                    str(video_path),
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "1:a?",
+                    "-c",
+                    "copy",
+                    "-t",
+                    f"{frame_count / source_fps:.9f}",
+                    str(muxed_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError("ffmpeg is required to preserve source audio") from error
+        except subprocess.CalledProcessError as error:
+            details = error.stderr.strip() or str(error)
+            raise RuntimeError(f"unable to mux annotated video: {details}") from error
+        muxed_path.replace(output_path)
+
+        return VideoOutputSummary(
+            output_path=str(output_path),
+            frame_count=frame_count,
+            image_width=image_width,
+            image_height=image_height,
+            fps=source_fps,
+        )
 
 
 def _parse_device(value: str) -> str | int | None:
