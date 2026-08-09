@@ -205,14 +205,21 @@ class _LatestInferenceWorker:
                 return None
             return self.snapshot
 
-    def close(self) -> None:
+    def close(self, timeout_seconds: float) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
         while True:
             try:
                 self.requests.get_nowait()
             except Empty:
                 break
         self.requests.put_nowait(self._STOP)
-        self.thread.join()
+        self.thread.join(timeout_seconds)
+        if self.thread.is_alive():
+            raise RuntimeError(
+                "background video inference did not stop within "
+                f"{timeout_seconds:g} seconds"
+            )
         with self.lock:
             self._raise_if_failed()
 
@@ -259,6 +266,7 @@ class VideoInferenceRunner:
             [FrameArray, tuple[TrackedDetection, ...]], FrameArray
         ]
         | None = None,
+        worker_shutdown_timeout_seconds: float = 10.0,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -270,6 +278,10 @@ class VideoInferenceRunner:
             raise ValueError("image_size must be greater than zero")
         if playback_speed <= 0:
             raise ValueError("playback_speed must be greater than zero")
+        if worker_shutdown_timeout_seconds <= 0:
+            raise ValueError(
+                "worker_shutdown_timeout_seconds must be greater than zero"
+            )
         self.model = model
         self.cv2 = cv2_module
         self.target_fps = target_fps
@@ -279,6 +291,7 @@ class VideoInferenceRunner:
         self.device = device
         self.playback_speed = playback_speed
         self.renderer = renderer or self._render_detections
+        self.worker_shutdown_timeout_seconds = worker_shutdown_timeout_seconds
         self.monotonic = monotonic
         self.sleep = sleep
 
@@ -426,9 +439,11 @@ class VideoInferenceRunner:
                 ):
                     break
         finally:
-            if worker is not None:
-                worker.close()
-            capture.release()
+            try:
+                if worker is not None:
+                    worker.close(self.worker_shutdown_timeout_seconds)
+            finally:
+                capture.release()
 
 
 def _parse_device(value: str) -> str | int | None:
@@ -452,6 +467,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--playback-speed", type=float, default=1.0)
     parser.add_argument("--realtime", action="store_true")
     parser.add_argument("--max-frames", type=int)
+    parser.add_argument("--shutdown-timeout", type=float, default=10.0)
     return parser.parse_args()
 
 
@@ -465,6 +481,7 @@ def main() -> int:
         tracker=args.tracker,
         device=_parse_device(args.device),
         playback_speed=args.playback_speed,
+        worker_shutdown_timeout_seconds=args.shutdown_timeout,
     )
     for frame in runner.iter_video(
         args.video,

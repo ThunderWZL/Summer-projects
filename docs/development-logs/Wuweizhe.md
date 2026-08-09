@@ -60,11 +60,16 @@
   * 完成：将完整源视频帧与 5 FPS AI 采样解耦，每张原视频帧均叠加最新可用检测结果，并将 `annotated_frame` 收紧为 NumPy `uint8` OpenCV 帧类型。
   * 实现：新增无追帧的实时节拍器；使用单槽后台队列异步推理，超载时丢弃旧待处理样本；增加首帧模型和跟踪器预热、分析时间戳与更新标记，并将后台推理异常回传播放侧。
   * 验证：`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml\tests -v`，15 项测试通过；`.\ml\.venv\Scripts\python.exe -m py_compile ml\video_inference.py`，通过；`CUDA_VISIBLE_DEVICES=0 ./conda/bin/python video_inference.py 'How many OSHA violations_ _ r_funny.mp4' --weights outputs/training/construction-ppe-baseline/weights/best.pt --fps 5 --device 0 --realtime`，服务器完整输出 372 帧、AI 更新 62 次、最大分析滞后 267 ms；首帧预热进程用时 5.067 秒，完整流进程用时 18.069 秒，扣除启动后的播放和收尾约 13 秒，与 12.4 秒视频节拍一致。本次未修改后端，未运行后端测试；ML 全局 lint 和构建命令未配置，未运行。
+* 17:04 `fix(ml): 防止推理线程阻塞退出`
+  * 完成：增加“慢 AI 与完整帧输出”组合回归测试，确认后台推理阻塞时播放侧仍按顺序输出全部原视频帧。
+  * 实现：为推理线程退出增加默认 10 秒的可配置超时，超时时显式报错；使用嵌套 `finally` 保证线程超时或异常时仍释放视频捕获句柄。
+  * 验证：`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml\tests -v`，18 项测试通过；`.\ml\.venv\Scripts\python.exe -m py_compile ml\video_inference.py`，通过；`CUDA_VISIBLE_DEVICES=0 ./conda/bin/python video_inference.py 'How many OSHA violations_ _ r_funny.mp4' --weights outputs/training/construction-ppe-baseline/weights/best.pt --fps 5 --device 0 --realtime --shutdown-timeout 10`，服务器完整输出 372 帧、AI 更新 62 次并在超时内正常退出。本次未修改后端，未运行后端测试；ML 全局 lint 和构建命令未配置，未运行。
 
 ### 问题与处理
 
-* 首次实时复测虽完整输出 372 帧，但首次模型初始化导致最大分析滞后 1733 ms；将首帧预热移到播放时钟开始前后，最大滞后降至 267 ms。
+* 首次实时复测虽完整输出 372 帧，但首次模型初始化导致最大分析滞后 1733 ms；将首帧预热移到播放时钟开始前，最大滞后降至 267 ms。
 * `InferenceFrame` 与 `annotated_frame` 的全部调用方均在 `ml` 目录，未跨模块传输，因此收紧内部类型而不修改共享 Pydantic 契约。
+* 原实现无限期等待推理线程退出，模型或 GPU 调用卡死时会阻塞会话停止；增加退出超时、错误回传和捕获句柄释放测试后解决。
 
 ### 后续计划
 
