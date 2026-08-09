@@ -28,6 +28,7 @@ from app.contracts import (
     CaseStatus,
     CaseTimelineItem,
     CaseUrgency,
+    ErrorResponse,
     FactsSubmissionRecord,
     Pagination,
     PpeType,
@@ -63,6 +64,12 @@ TERMINAL_STATUSES = {
     CaseStatus.VLM_REJECTED,
     CaseStatus.HUMAN_REJECTED,
     CaseStatus.CLOSED,
+}
+WORKFLOW_ERROR_RESPONSES = {
+    400: {"model": ErrorResponse, "description": "命令业务校验失败"},
+    403: {"model": ErrorResponse, "description": "当前角色无权执行命令"},
+    404: {"model": ErrorResponse, "description": "事件不存在"},
+    409: {"model": ErrorResponse, "description": "事件版本冲突"},
 }
 ReviewCommand = Annotated[
     ApproveRectification | RejectCase | RequestReinvestigation,
@@ -342,7 +349,11 @@ def get_case_detail(
     )
 
 
-@router.post("/{case_id}/facts", response_model=CaseCommandResponse)
+@router.post(
+    "/{case_id}/facts",
+    response_model=CaseCommandResponse,
+    responses=WORKFLOW_ERROR_RESPONSES,
+)
 def submit_facts(
     case_id: str,
     command: SubmitFacts,
@@ -368,7 +379,11 @@ def submit_facts(
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
 
-@router.post("/{case_id}/review", response_model=CaseCommandResponse)
+@router.post(
+    "/{case_id}/review",
+    response_model=CaseCommandResponse,
+    responses=WORKFLOW_ERROR_RESPONSES,
+)
 def review_case(
     case_id: str,
     command: ReviewCommand,
@@ -381,6 +396,7 @@ def review_case(
 @router.post(
     "/{case_id}/rectification-evidence",
     response_model=CaseCommandResponse,
+    responses=WORKFLOW_ERROR_RESPONSES,
 )
 def submit_rectification_evidence(
     case_id: str,
@@ -408,7 +424,11 @@ def submit_rectification_evidence(
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
 
-@router.post("/{case_id}/recheck", response_model=CaseCommandResponse)
+@router.post(
+    "/{case_id}/recheck",
+    response_model=CaseCommandResponse,
+    responses=WORKFLOW_ERROR_RESPONSES,
+)
 def recheck_case(
     case_id: str,
     command: RecheckCommand,
