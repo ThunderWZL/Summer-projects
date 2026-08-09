@@ -139,6 +139,10 @@
   * 完成：将事件仓储端口提取为独立公共模块，补齐创建、查询、筛选分页、乐观锁提交、候选反查和人工提交记录接口。
   * 实现：以 `CaseQuery` 明确状态、PPE、摄像头、责任主体、时间、逾期、关键词和分页语义，以 `CasePage` 返回分页数据与筛选总数；状态机与 VLM 服务改为从新模块依赖协议，既有行为不变。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_case_store_port.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，27 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 17:16 `feat(store): 实现内存事件仓储`
+  * 完成：实现事件快照创建、查询、候选反查、乐观锁提交、人工提交历史与列表筛选分页，并隔离仓储内部可变状态。
+  * 实现：成功提交原子完成版本递增、更新时间和状态时间线追加；列表支持状态、PPE、摄像头、责任主体、发生时间、逾期和关键词筛选，按“逾期、待人工、较早发生”排序后分页，并返回分页前总数。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_inmemory_case_store.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，31 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
 
 ### 问题与处理
 
