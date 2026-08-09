@@ -392,8 +392,7 @@ class VideoInferenceRunner:
             else None
         )
         worker = _LatestInferenceWorker(self._infer) if realtime else None
-        if worker is not None:
-            worker.start()
+        worker_started = False
 
         frame_index = 0
         playback_frames = 0
@@ -401,6 +400,9 @@ class VideoInferenceRunner:
         detections: tuple[TrackedDetection, ...] = ()
         analysis_timestamp_ms: int | None = None
         try:
+            if worker is not None:
+                worker.start()
+                worker_started = True
             while True:
                 available, frame = capture.read()
                 if not available:
@@ -453,7 +455,7 @@ class VideoInferenceRunner:
                     break
         finally:
             try:
-                if worker is not None:
+                if worker_started and worker is not None:
                     worker.close(self.worker_shutdown_timeout_seconds)
             finally:
                 capture.release()
