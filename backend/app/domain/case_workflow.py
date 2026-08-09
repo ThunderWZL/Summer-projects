@@ -21,19 +21,7 @@ from app.contracts import (
     VlmReviewResult,
     VlmVerdict,
 )
-
-
-class CaseStorePort(Protocol):
-    def get(self, case_id: str) -> CaseSnapshot | None: ...
-
-    def find_by_candidate(self, candidate_id: str) -> CaseSnapshot | None: ...
-
-    def commit(
-        self,
-        snapshot: CaseSnapshot,
-        expected_version: int,
-        transition: CaseTransition,
-    ) -> CaseSnapshot: ...
+from app.domain.case_store import CaseStorePort
 
 
 class ActorRolePort(Protocol):

@@ -10,7 +10,8 @@ from app.contracts import (
     VlmReviewResult,
     VlmVerdict,
 )
-from app.domain.case_workflow import CaseWorkflow, CaseStorePort, RecordVlmReview
+from app.domain.case_store import CaseStorePort
+from app.domain.case_workflow import CaseWorkflow, RecordVlmReview
 from app.modules.vlm_review.parser import VlmParseError, parse
 from app.modules.vlm_review.port import VlmModelPort, VlmRequest, VlmRawResponse
 
