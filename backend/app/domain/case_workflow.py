@@ -21,19 +21,7 @@ from app.contracts import (
     VlmReviewResult,
     VlmVerdict,
 )
-
-
-class CaseStorePort(Protocol):
-    def get(self, case_id: str) -> CaseSnapshot | None: ...
-
-    def find_by_candidate(self, candidate_id: str) -> CaseSnapshot | None: ...
-
-    def commit(
-        self,
-        snapshot: CaseSnapshot,
-        expected_version: int,
-        transition: CaseTransition,
-    ) -> CaseSnapshot: ...
+from app.domain.case_store import CaseStorePort
 
 
 class ActorRolePort(Protocol):
@@ -90,6 +78,8 @@ class StaleCaseVersion(CaseWorkflowError):
     code = "STALE_CASE_VERSION"
 
     def __init__(self, expected: int, current: int) -> None:
+        self.expected = expected
+        self.current = current
         super().__init__(f"expected version {expected}, current {current}")
 
 
@@ -128,16 +118,28 @@ class InvalidDeadline(CaseWorkflowError):
         super().__init__("rectification deadline must be in the future")
 
 
+class InvalidResponsibleParty(CaseWorkflowError):
+    code = "INVALID_RESPONSIBLE_PARTY"
+
+    def __init__(self, case_id: str, responsible_party_id: str) -> None:
+        super().__init__(
+            f"responsible party {responsible_party_id} is not eligible "
+            f"for case {case_id}"
+        )
+
+
 class CaseWorkflow:
     def __init__(
         self,
         store: CaseStorePort,
         actor_roles: ActorRolePort,
         clock: Callable[[], datetime],
+        responsible_party_is_eligible: Callable[[CaseSnapshot, str], bool],
     ) -> None:
         self._store = store
         self._actor_roles = actor_roles
         self._clock = clock
+        self._responsible_party_is_eligible = responsible_party_is_eligible
 
     def apply(self, case_id: str, command: WorkflowCommand) -> CaseSnapshot:
         snapshot = self._store.get(case_id)
@@ -233,6 +235,13 @@ class CaseWorkflow:
             actor_role = self._actor_roles.role_for(command.actor_id)
             if actor_role is not ActorRole.PROJECT_SAFETY_REVIEWER:
                 raise PermissionDenied(command.actor_id)
+            if not self._responsible_party_is_eligible(
+                snapshot, command.responsible_party_id
+            ):
+                raise InvalidResponsibleParty(
+                    case_id,
+                    command.responsible_party_id,
+                )
             if command.rectification_due_at <= self._clock():
                 raise InvalidDeadline()
             updated = snapshot.model_copy(
