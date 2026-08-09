@@ -112,7 +112,9 @@ def write_manifest(path: str | Path) -> None:
     )
 
 
-def load_manifest(path: str | Path) -> tuple[AuthoritativeSource, ...]:
+def load_manifest(path: str | Path | None = None) -> tuple[AuthoritativeSource, ...]:
+    if path is None:
+        path = Path(__file__).parent / "manifests" / "authoritative_sources.json"
     raw: Any = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("manifest must contain a list")
