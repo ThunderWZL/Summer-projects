@@ -194,6 +194,11 @@
   * 实现：保持 manifest 指纹与内容指纹分离，未来 Agent 仅消费检索端口，不接触存储实现。
   * 验证：`git diff --check`，通过；后端全量测试在后续 RAG 修复提交中统一运行。
 
+* 20:11 `fix(rag): 校正官方来源状态与检查脚本`
+  * 完成：将五来源状态、发布机关、77号文发布日期/生效日和 HTML 正文节点 hash 策略改为官方可核验值，并保持 Python 常量与随仓 JSON 完全一致。
+  * 实现：Top-K 检查从仓库 manifest 验证语料，缺密钥、未准备语料或空 citation 均以 NOT RUN/非零退出，不再把离线空库当真实 RAG 成功。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\\ Integrated\\ Application\\ Training/backend/.venv/bin/python -m pytest -q`，155 项通过、1 项 `real_rag` 跳过；真实 RAG 未运行。
+
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
 * 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
