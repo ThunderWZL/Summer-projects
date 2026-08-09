@@ -68,6 +68,10 @@
   * 完成：补全实时帧输出节拍、迟到后恢复休眠、慢 AI 仅追踪最新样本、标注像素叠加和完整视频编码输出的回归验证。
   * 实现：增加标注 MP4 输出函数与 `--output-video` 命令行参数，沿用源视频帧率、尺寸和完整播放帧；组合测试直接断言编码器收到的每帧都包含检测框像素，并构造旧采样积压确认中间样本被最新样本替换。
   * 验证：`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml\tests -v`，21 项测试通过；`.\ml\.venv\Scripts\python.exe -m py_compile ml\video_inference.py`，通过；`CUDA_VISIBLE_DEVICES=0 ./conda/bin/python video_inference.py 'How many OSHA violations_ _ r_funny.mp4' --weights outputs/training/construction-ppe-baseline/weights/best.pt --fps 5 --device 0 --realtime --shutdown-timeout 10 --output-video outputs/w03-annotated-review-20260809.mp4`，服务器输出 372 帧、30 FPS、480×854、12.4 秒的 MPEG-4 视频，抽帧确认人员与反光背心标注已写入最终文件。本次未修改后端，未运行后端测试；ML 全局 lint 和构建命令未配置，未运行。
+* 20:47 `fix(ml): 保留标注视频原始音轨`
+  * 完成：保留源视频 AAC 音轨，并保证音轨短于画面时不截断最后的标注视频帧。
+  * 实现：先在输出目录的临时目录编码完整标注画面，再使用 FFmpeg 无重编码合入可选源音轨，成功后原子移动到目标路径；以实际帧数与帧率限定容器时长，保证完整输出不被较短音轨截断，且限帧输出不携带整段音轨。
+  * 验证：`.\ml\.venv\Scripts\python.exe -m unittest discover -s ml\tests -v`，21 项测试通过；`.\ml\.venv\Scripts\python.exe -m py_compile ml\video_inference.py`，通过；`CUDA_VISIBLE_DEVICES=0 ./conda/bin/python video_inference.py 'How many OSHA violations_ _ r_funny.mp4' --weights outputs/training/construction-ppe-baseline/weights/best.pt --fps 5 --device 0 --realtime --shutdown-timeout 10 --output-video outputs/w03-annotated-final-20260809.mp4`，服务器输出保留 372/372 帧、30 FPS、12.4 秒画面和 12.20 秒 AAC 音轨；增加 `--max-frames 30` 复验后，输出为 30 帧、1.0 秒画面和 1.003 秒音轨。本次未修改后端，未运行后端测试；ML 全局 lint 和构建命令未配置，未运行。
 
 ### 问题与处理
 
@@ -75,6 +79,7 @@
 * `InferenceFrame` 与 `annotated_frame` 的全部调用方均在 `ml` 目录，未跨模块传输，因此收紧内部类型而不修改共享 Pydantic 契约。
 * 原实现无限期等待推理线程退出，模型或 GPU 调用卡死时会阻塞会话停止；增加退出超时、错误回传和捕获句柄释放测试后解决。
 * 原回归测试只证明返回了帧对象，未覆盖迟到后恢复休眠、旧样本替换、标注像素和最终视频文件；补充行为级与服务器端到端验证后解决。
+* 首次标注 MP4 只包含视频流；合回源 AAC 音轨后又发现 `-shortest` 会因音轨较短将 372 帧截为 367 帧，移除截断参数后复验同时保留完整画面和音轨。
 
 ### 后续计划
 

@@ -4,6 +4,7 @@ import time
 import unittest
 from pathlib import Path
 from threading import Event
+from unittest.mock import patch
 
 import numpy as np
 
@@ -464,11 +465,16 @@ class VideoInferenceRunnerTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             output_path = Path(temporary_directory) / "annotated.mp4"
-            summary = write_annotated_video(
-                runner,
-                Path("fixture.mp4"),
-                output_path,
-            )
+            with patch("video_inference.subprocess.run") as run_ffmpeg:
+                run_ffmpeg.side_effect = lambda command, **_kwargs: Path(
+                    command[-1]
+                ).touch()
+                summary = write_annotated_video(
+                    runner,
+                    Path("fixture.mp4"),
+                    output_path,
+                )
+            self.assertTrue(output_path.is_file())
 
         writer = cv2_module.writers[0]
         self.assertEqual(writer.codec, "mp4v")
@@ -485,6 +491,12 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertEqual(summary.frame_count, 4)
         self.assertEqual((summary.image_width, summary.image_height), (64, 36))
         self.assertEqual(summary.fps, 10.0)
+        ffmpeg_command = run_ffmpeg.call_args.args[0]
+        self.assertEqual(ffmpeg_command[ffmpeg_command.index("-map") + 1], "0:v:0")
+        self.assertIn("1:a?", ffmpeg_command)
+        self.assertEqual(ffmpeg_command[ffmpeg_command.index("-c") + 1], "copy")
+        self.assertNotIn("-shortest", ffmpeg_command)
+        self.assertEqual(ffmpeg_command[ffmpeg_command.index("-t") + 1], "0.400000000")
 
     def test_worker_timeout_still_releases_video_capture(self):
         capture = FakeCapture(
