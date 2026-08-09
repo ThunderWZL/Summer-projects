@@ -26,6 +26,8 @@ from app.contracts import (
 class CaseStorePort(Protocol):
     def get(self, case_id: str) -> CaseSnapshot | None: ...
 
+    def find_by_candidate(self, candidate_id: str) -> CaseSnapshot | None: ...
+
     def commit(
         self,
         snapshot: CaseSnapshot,
