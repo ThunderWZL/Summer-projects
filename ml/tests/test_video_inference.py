@@ -341,6 +341,49 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertGreaterEqual(elapsed, 0.16)
         self.assertLess(elapsed, 0.8)
 
+    def test_slow_realtime_stream_waits_again_after_a_late_frame(self):
+        capture = FakeCapture(
+            [np.full((2, 2, 3), index, dtype=np.uint8) for index in range(5)],
+            fps=10.0,
+        )
+        model = SlowAfterWarmupModel()
+        clock = FakeClock()
+
+        def render(frame, _detections):
+            if int(frame[0, 0, 0]) == 3:
+                clock.now += 0.35
+            return frame.copy()
+
+        runner = VideoInferenceRunner(
+            model,
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=render,
+            worker_shutdown_timeout_seconds=1.0,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+        stream = runner.iter_video(Path("fixture.mp4"), realtime=True)
+
+        arrival_times = [clock.now]
+        output = [next(stream)]
+        for _ in range(2):
+            output.append(next(stream))
+            arrival_times.append(clock.now)
+        self.assertTrue(model.entered.wait(timeout=1))
+        for _ in range(2):
+            output.append(next(stream))
+            arrival_times.append(clock.now)
+        model.release.set()
+        with self.assertRaises(StopIteration):
+            next(stream)
+
+        self.assertEqual([frame.frame_index for frame in output], list(range(5)))
+        self.assertAlmostEqual(arrival_times[3], 0.55)
+        self.assertAlmostEqual(arrival_times[4] - arrival_times[3], 0.1)
+        self.assertTrue(all(delay > 0 for delay in clock.sleeps))
+        self.assertTrue(capture.released)
+
     def test_renderer_changes_pixels_without_mutating_original_frame(self):
         capture = FakeCapture([])
         runner = VideoInferenceRunner(

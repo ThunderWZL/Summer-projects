@@ -107,6 +107,7 @@
 
 * 完成 VLM 复核核心（切片 1），打通"候选 → 复核 → 状态机"链路，并补上 `CaseStorePort` 按候选查询能力。
 * 修复事件 API 黑盒验收发现的责任主体校验、演示证据链与 OpenAPI 错误响应声明问题。
+* 补齐视频实时推理的组合回归测试，锁定迟到节拍、分析结果复用与异常资源释放行为。
 
 ### 开发记录
 
@@ -156,6 +157,10 @@
   * 完成：拒绝案件范围外的整改责任主体且保持事件与提交历史不变；修复车辆区结案、待复查及已进展案件的机器结果、调查事实、整改证据和人工提交审计；为四个人工命令公开统一错误响应。
   * 实现：状态机通过业务上下文校验责任主体资格并稳定返回 400；演示种子按摄像头、区域、任务、PPE、责任主体和引用构建自洽证据链；组合根同时装载人工提交；OpenAPI 显式声明冻结 `ErrorResponse` 的 400、403、404、409 响应。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -q tests/api/test_cases_api.py tests/api/test_error_mapping.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，46 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，134 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
+* 21:52 `test(ml): 覆盖实时迟到后的节拍恢复`
+  * 完成：增加慢推理组合回归，验证播放流一次迟到后不会连续追帧，并保持全部源帧顺序输出和资源释放。
+  * 实现：通过 `VideoInferenceRunner.iter_video()` 公共生成器注入可控时钟，在播放中制造 350ms 迟到，直接断言下一帧恢复 100ms 正向等待；临时恢复旧 deadline 累加逻辑确认测试可复现零等待 burst 后再恢复正确实现。
+  * 验证：`/home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，17 项通过；`git diff --check`，通过；ML 未配置全局 lint 或构建命令，未运行。
 
 ### 问题与处理
 
