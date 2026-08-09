@@ -106,6 +106,7 @@
 ### 当日目标
 
 * 完成 VLM 复核核心（切片 1），打通"候选 → 复核 → 状态机"链路，并补上 `CaseStorePort` 按候选查询能力。
+* 修复事件 API 黑盒验收发现的责任主体校验、演示证据链与 OpenAPI 错误响应声明问题。
 
 ### 开发记录
 
@@ -151,12 +152,17 @@
   * 完成：让事件 API 测试固定使用带时区的业务时间，避免未来日期变化导致期限与逾期断言漂移。
   * 实现：通过 FastAPI 公共依赖覆盖替换时钟系统边界，每项测试结束后恢复应用依赖，不修改生产时钟行为。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_cases_api.py`，10 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，124 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查。
+* 18:03 `fix(api): 修复事件命令与演示审计一致性`
+  * 完成：拒绝案件范围外的整改责任主体且保持事件与提交历史不变；修复车辆区结案、待复查及已进展案件的机器结果、调查事实、整改证据和人工提交审计；为四个人工命令公开统一错误响应。
+  * 实现：状态机通过业务上下文校验责任主体资格并稳定返回 400；演示种子按摄像头、区域、任务、PPE、责任主体和引用构建自洽证据链；组合根同时装载人工提交；OpenAPI 显式声明冻结 `ErrorResponse` 的 400、403、404、409 响应。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -q tests/api/test_cases_api.py tests/api/test_error_mapping.py tests/domain/test_case_workflow.py tests/modules/vlm_review/test_service.py`，46 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，134 项通过；`git diff --check`，通过；后端未配置 lint 和类型检查，前端与 ML 未受影响，未运行构建或训练。
 
 ### 问题与处理
 
 * 子 agent 独立审查发现 `evidence_timestamps_ms` 无非负约束、解析层未兜底，与契约评审稿全局规则不一致；已在解析层补齐显式校验并增加回归测试，低严重度，不影响其他契约遵守。
 * 切片 2 的值模型与端口属于共享接口，已按规范拆成独立提交，需在合并 dev 前通知郝欣冉按该值模型产出 X-01 种子数据。
+* 事件 API 黑盒验收发现不存在的责任主体可推进状态、公开种子存在跨场景事实与审计缺口、人工命令未公开错误响应；已通过公共 ASGI/OpenAPI 回归逐项复现并修复，未修改冻结契约。
 
 ### 后续计划
 
-* 合并 `feat/site-context-port` 到 `dev` 前通知郝欣冉确认值模型字段；之后进入切片 4-1（API 组合根，换入 in-memory 实现）。
+* 将修复后的 `feat/api-composition` 提交给项目负责人复验；不在任务分支内合并 `dev` 或 `main`。
