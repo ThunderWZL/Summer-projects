@@ -1,7 +1,10 @@
 from datetime import datetime
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
+from app.adapters.database import seed as seed_module
 from app.adapters.database.models import (
     CameraModel,
     ResponsiblePartyModel,
@@ -11,12 +14,14 @@ from app.adapters.database.models import (
     WorkPermitModel,
     ZoneModel,
 )
-from app.adapters.database.seed import initialize_database
+from app.adapters.database.seed import initialize_database, seed_database
 from app.adapters.database.session import (
     create_database_engine,
     create_session_factory,
 )
 from app.contracts import ActorRole
+from app.domain.inmemory.actor_roles import DemoUserDirectory
+from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.site_context import WorkPermitStatus
 
 
@@ -136,3 +141,43 @@ def test_seed_is_idempotent(tmp_path) -> None:
         "users": 2,
     }
     engine.dispose()
+
+
+def test_seed_rejects_a_video_without_a_zone(monkeypatch) -> None:
+    class MissingZoneContext(MemorySiteContext):
+        def get_zone_at(self, camera_id: str):
+            return None
+
+    monkeypatch.setattr(seed_module, "MemorySiteContext", MissingZoneContext)
+
+    with Session() as session:
+        with pytest.raises(ValueError, match="CAM-01 has no zone"):
+            seed_database(session)
+
+
+def test_seed_rejects_a_permit_without_a_task_matrix(monkeypatch) -> None:
+    class MissingMatrixContext(MemorySiteContext):
+        def get_task_ppe_matrix(self, task_code: str):
+            return None
+
+    monkeypatch.setattr(seed_module, "MemorySiteContext", MissingMatrixContext)
+
+    with Session() as session:
+        with pytest.raises(ValueError, match="wp-0201 has no task matrix"):
+            seed_database(session)
+
+
+def test_seed_rejects_a_missing_frozen_demo_user(monkeypatch) -> None:
+    class MissingUserDirectory(DemoUserDirectory):
+        def get(self, actor_id: str):
+            if actor_id == "officer-01":
+                return None
+            return super().get(actor_id)
+
+    monkeypatch.setattr(
+        seed_module, "DemoUserDirectory", MissingUserDirectory
+    )
+
+    with Session() as session:
+        with pytest.raises(ValueError, match="demo user officer-01 is missing"):
+            seed_database(session)
