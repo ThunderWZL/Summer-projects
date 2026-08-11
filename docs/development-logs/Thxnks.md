@@ -41,10 +41,15 @@
   * 完成：在不增加表和字段的前提下补齐调查结果持久化往返、数据库写入校验、种子失败路径和事务回滚覆盖。
   * 实现：使用结构化 JSON 容器隔离人工事实与确定性 resolver 结果；为分析会话状态、证据帧角色和引用生效日期增加领域校验；明确初始化、事务和异常传播边界。
   * 验证：`.venv\Scripts\python.exe -m pytest tests/adapters/database -q`，15 项通过；`.venv\Scripts\python.exe -m pytest`，175 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。项目未配置后端 lint 和类型检查命令，未运行。
+* 00:57 `fix(database): 对齐共享契约字段约束`
+  * 完成：消除数据库层对引用生效日期的额外格式限制，并将分析会话状态统一到共享 `AnalysisStage`。
+  * 实现：保留 `Citation.effective_date` 的原文字符串语义，删除自定义会话终态枚举，直接复用共享契约的阶段类型和精确枚举值。
+  * 验证：`.venv\Scripts\python.exe -m pytest tests/adapters/database -q`，14 项通过；`.venv\Scripts\python.exe -m pytest`，174 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。项目未配置后端 lint 和类型检查命令，未运行。
 
 ### 问题与处理
 
 * 调查结果包含现有专列未覆盖的确定性字段；使用 `facts_json` 内的命名容器保存，避免增加字段且避免人工事实覆盖 `required_ppe`。首次往返测试因多层外键对象一次性 flush 顺序失败，改为按依赖层显式 flush 后通过。
+* 代码复审发现日期格式和会话终态枚举收紧了共享契约；按契约权威顺序移除额外限制，并使用中文生效日期原文完成数据库往返验证。
 
 ### 后续计划
 

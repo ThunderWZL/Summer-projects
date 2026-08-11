@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from enum import Enum as PythonEnum
 from typing import Any
 
@@ -22,6 +22,7 @@ from sqlalchemy.types import TypeDecorator
 
 from app.contracts import (
     ActorRole,
+    AnalysisStage,
     CaseStatus,
     EvidenceKind,
     FrameRole,
@@ -53,27 +54,6 @@ class TimezoneAwareDateTime(TypeDecorator[datetime]):
         return datetime.fromisoformat(value) if value is not None else None
 
 
-class IsoDateString(TypeDecorator[str]):
-    """Persist optional calendar dates as canonical ISO ``YYYY-MM-DD`` text."""
-
-    impl = String(10)
-    cache_ok = True
-
-    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
-        if value is None:
-            return None
-        try:
-            parsed = date.fromisoformat(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("ISO date in YYYY-MM-DD format is required") from exc
-        if parsed.isoformat() != value:
-            raise ValueError("ISO date in YYYY-MM-DD format is required")
-        return value
-
-    def process_result_value(self, value: str | None, dialect: Any) -> str | None:
-        return value
-
-
 def enum_column_type(
     enum_class: type[PythonEnum], name: str
 ) -> Enum:
@@ -89,15 +69,6 @@ def enum_column_type(
 
 class Base(DeclarativeBase):
     pass
-
-
-class AnalysisSessionStatus(str, PythonEnum):
-    STARTING = "STARTING"
-    READING = "READING"
-    INFERENCING = "INFERENCING"
-    STOPPING = "STOPPING"
-    FINISHED = "FINISHED"
-    FAILED = "FAILED"
 
 
 class UserModel(Base):
@@ -245,8 +216,8 @@ class AnalysisSessionModel(Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[AnalysisSessionStatus] = mapped_column(
-        enum_column_type(AnalysisSessionStatus, "analysis_session_status"),
+    status: Mapped[AnalysisStage] = mapped_column(
+        enum_column_type(AnalysisStage, "analysis_stage"),
         nullable=False,
     )
     started_at: Mapped[datetime] = mapped_column(
@@ -407,9 +378,7 @@ class CitationModel(Base):
     document_title: Mapped[str] = mapped_column(String(300), nullable=False)
     standard_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     section: Mapped[str] = mapped_column(String(200), nullable=False)
-    effective_date: Mapped[str | None] = mapped_column(
-        IsoDateString(), nullable=True
-    )
+    effective_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     excerpt: Mapped[str] = mapped_column(Text, nullable=False)
 

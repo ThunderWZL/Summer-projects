@@ -7,7 +7,6 @@ from sqlalchemy.exc import StatementError
 from app.adapters.database.models import (
     AnalysisSessionModel,
     CaseEvidenceModel,
-    CitationModel,
     TimezoneAwareDateTime,
     UserModel,
 )
@@ -85,7 +84,7 @@ def test_aware_datetime_rejects_a_naive_value() -> None:
                 ),
                 playback_ms=0,
             ),
-            "analysis_session_status",
+            "analysis_stage",
         ),
         (
             CaseEvidenceModel(
@@ -97,19 +96,6 @@ def test_aware_datetime_rejects_a_naive_value() -> None:
                 metadata_json={},
             ),
             "case_evidence_frame_role",
-        ),
-        (
-            CitationModel(
-                id="citation-invalid",
-                case_id="missing-case",
-                document_title="测试规范",
-                standard_no=None,
-                section="第 1 条",
-                effective_date="2026/08/07",
-                source_url="https://example.test/spec",
-                excerpt="测试摘录",
-            ),
-            "YYYY-MM-DD",
         ),
     ],
 )

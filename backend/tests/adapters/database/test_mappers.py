@@ -8,7 +8,6 @@ from app.adapters.database.mappers import (
 )
 from app.adapters.database.models import (
     AnalysisSessionModel,
-    AnalysisSessionStatus,
     CameraModel,
     CaseModel,
     CitationModel,
@@ -22,6 +21,7 @@ from app.adapters.database.session import (
     initialize_schema,
 )
 from app.contracts import (
+    AnalysisStage,
     CaseStatus,
     Citation,
     EvidenceKind,
@@ -57,7 +57,7 @@ def test_investigation_result_round_trips_without_new_schema_fields() -> None:
                 document_title="施工现场安全规范",
                 standard_no="SITE-PPE-001",
                 section="第 3 条（第 8 页）",
-                effective_date="2026-01-01",
+                effective_date="2026年1月1日",
                 source_url="https://example.test/site-ppe-001",
                 excerpt="切割作业人员应按要求佩戴安全帽。",
             )
@@ -90,7 +90,7 @@ def test_investigation_result_round_trips_without_new_schema_fields() -> None:
             AnalysisSessionModel(
                 id="session-02",
                 video_id="video-02",
-                status=AnalysisSessionStatus.FINISHED,
+                status=AnalysisStage.STOPPING,
                 started_at=occurred_at,
                 playback_ms=5_000,
             )
