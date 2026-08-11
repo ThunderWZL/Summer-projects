@@ -247,6 +247,7 @@
 ### 当日目标
 
 * 更新 Agent 协作规则，使契约、设计文档、固定负责人和项目检查命令与重构后的开发方案一致。
+* 修复 VLM 技术失败被伪装成语义结论的问题，确保失败不触发 Case 状态迁移。
 
 ### 开发记录
 
@@ -255,10 +256,16 @@
   * 实现：以触发式文档指针连接总体设计、AI 共享契约、版本化共享契约、`contracts.py` 和运行时 Schema；数据库 schema 按 D-09 冻结，OpenAPI、ML、RAG 检查与跨模块交付要求分别落入对应工作流。
   * 验证：`git diff --check -- AGENTS.md docs/development-logs/Thunder.md`，通过；`rg -n "共享契约（给ai）|D-09|\.venv/bin/python -m pytest|npm run generate:contracts|python -m pytest ml/tests|check_rag_topk|reports/generated/" AGENTS.md`，确认关键规则已写入；本次只修改 Agent 规则和开发日志，未运行代码测试或构建。
 
+* 00:41 `fix(vlm): 区分复核技术失败与语义结论`
+  * 完成：移除解析失败伪造 `UNCERTAIN` 的降级路径，合法不确定结论仍进入 `VLM_REJECTED`，技术失败重试耗尽后保持候选状态。
+  * 实现：新增带 `retryable` 和尝试次数的 `VlmProcessingFailed`；VLM 服务支持配置化重试次数与间隔，永久失败立即透传且不调用状态机；示例环境补齐对应配置。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/modules/vlm_review/`，23 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，163 项通过、1 项真实 RAG 条件测试跳过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
+
 ### 问题与处理
 
 * 当前主工作区存在其他成员或任务的未提交修改；使用基于最新 `origin/dev` 的独立 worktree 完成本次文档提交，未切换、覆盖或暂存原工作区内容。
+* 切片 1 工作树未包含被忽略的虚拟环境；改用主项目 `backend/.venv` 在修复分支目录运行测试，未修改环境或依赖。
 
 ### 后续计划
 
-* 推送 `chore/update-agent-instructions` 任务分支，交由项目负责人合入 `dev`。
+* 推送 `fix/vlm-failure-split` 任务分支，交由项目负责人复验并合入 `dev`。
