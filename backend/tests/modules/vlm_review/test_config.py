@@ -9,6 +9,8 @@ VLM_ENV_KEYS = (
     "VLM_MAX_FRAMES",
     "VLM_MAX_IMAGE_EDGE",
     "VLM_MAX_OUTPUT_TOKENS",
+    "VLM_MAX_RETRIES",
+    "VLM_RETRY_DELAY_SECONDS",
 )
 
 
@@ -26,6 +28,8 @@ def test_defaults_are_used_without_vlm_env(monkeypatch) -> None:
     assert settings.vlm_max_frames == 8
     assert settings.vlm_max_image_edge == 1280
     assert settings.vlm_max_output_tokens == 512
+    assert settings.vlm_max_retries == 2
+    assert settings.vlm_retry_delay_seconds == 0.5
 
 
 def test_vlm_env_vars_override_defaults(monkeypatch) -> None:
@@ -37,6 +41,8 @@ def test_vlm_env_vars_override_defaults(monkeypatch) -> None:
     monkeypatch.setenv("VLM_MAX_FRAMES", "4")
     monkeypatch.setenv("VLM_MAX_IMAGE_EDGE", "1024")
     monkeypatch.setenv("VLM_MAX_OUTPUT_TOKENS", "256")
+    monkeypatch.setenv("VLM_MAX_RETRIES", "4")
+    monkeypatch.setenv("VLM_RETRY_DELAY_SECONDS", "1.25")
 
     settings = Settings()
 
@@ -48,3 +54,5 @@ def test_vlm_env_vars_override_defaults(monkeypatch) -> None:
     assert settings.vlm_max_frames == 4
     assert settings.vlm_max_image_edge == 1024
     assert settings.vlm_max_output_tokens == 256
+    assert settings.vlm_max_retries == 4
+    assert settings.vlm_retry_delay_seconds == 1.25
