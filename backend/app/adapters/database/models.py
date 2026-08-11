@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum as PythonEnum
 from typing import Any
 
@@ -24,6 +24,7 @@ from app.contracts import (
     ActorRole,
     CaseStatus,
     EvidenceKind,
+    FrameRole,
     HumanSubmissionType,
     PpeType,
     VlmVerdict,
@@ -52,6 +53,27 @@ class TimezoneAwareDateTime(TypeDecorator[datetime]):
         return datetime.fromisoformat(value) if value is not None else None
 
 
+class IsoDateString(TypeDecorator[str]):
+    """Persist optional calendar dates as canonical ISO ``YYYY-MM-DD`` text."""
+
+    impl = String(10)
+    cache_ok = True
+
+    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
+        if value is None:
+            return None
+        try:
+            parsed = date.fromisoformat(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ISO date in YYYY-MM-DD format is required") from exc
+        if parsed.isoformat() != value:
+            raise ValueError("ISO date in YYYY-MM-DD format is required")
+        return value
+
+    def process_result_value(self, value: str | None, dialect: Any) -> str | None:
+        return value
+
+
 def enum_column_type(
     enum_class: type[PythonEnum], name: str
 ) -> Enum:
@@ -67,6 +89,15 @@ def enum_column_type(
 
 class Base(DeclarativeBase):
     pass
+
+
+class AnalysisSessionStatus(str, PythonEnum):
+    STARTING = "STARTING"
+    READING = "READING"
+    INFERENCING = "INFERENCING"
+    STOPPING = "STOPPING"
+    FINISHED = "FINISHED"
+    FAILED = "FAILED"
 
 
 class UserModel(Base):
@@ -214,7 +245,10 @@ class AnalysisSessionModel(Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[AnalysisSessionStatus] = mapped_column(
+        enum_column_type(AnalysisSessionStatus, "analysis_session_status"),
+        nullable=False,
+    )
     started_at: Mapped[datetime] = mapped_column(
         TimezoneAwareDateTime(), nullable=False
     )
@@ -311,7 +345,9 @@ class CaseEvidenceModel(Base):
     case_id: Mapped[str] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
     )
-    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[FrameRole] = mapped_column(
+        enum_column_type(FrameRole, "case_evidence_frame_role"), nullable=False
+    )
     timestamp_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     path: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
@@ -371,7 +407,9 @@ class CitationModel(Base):
     document_title: Mapped[str] = mapped_column(String(300), nullable=False)
     standard_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     section: Mapped[str] = mapped_column(String(200), nullable=False)
-    effective_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    effective_date: Mapped[str | None] = mapped_column(
+        IsoDateString(), nullable=True
+    )
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     excerpt: Mapped[str] = mapped_column(Text, nullable=False)
 

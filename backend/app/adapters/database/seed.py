@@ -42,6 +42,11 @@ class SeedReport:
 
 
 def seed_database(session: Session) -> SeedReport:
+    """Upsert the deterministic six-channel context into an open transaction.
+
+    Missing zones, task matrices, or frozen demo users raise ``ValueError``.
+    The caller owns commit and rollback behavior.
+    """
     context = MemorySiteContext()
     directory = DemoUserDirectory()
     videos = context.list_videos()
@@ -165,6 +170,11 @@ def seed_database(session: Session) -> SeedReport:
 
 
 def initialize_database(engine: Engine) -> SeedReport:
+    """Bootstrap a new database and atomically seed deterministic demo data.
+
+    This helper is idempotent for the frozen seed identifiers. It is not a
+    migration command and must not be used to evolve a post-freeze schema.
+    """
     initialize_schema(engine)
     session_factory = create_session_factory(engine)
     with session_scope(session_factory) as session:
