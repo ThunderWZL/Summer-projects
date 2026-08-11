@@ -241,3 +241,24 @@
 ### 后续计划
 
 * 将修复后的 `feat/api-composition` 提交给项目负责人复验；不在任务分支内合并 `dev` 或 `main`。
+
+## 2026-08-12
+
+### 当日目标
+
+* 更新 Agent 协作规则，使契约、设计文档、固定负责人和项目检查命令与重构后的开发方案一致。
+
+### 开发记录
+
+* 00:18 `docs(workflow): 更新契约与设计文档指引`
+  * 完成：补充设计文档权威顺序，要求共享契约任务优先读取项目负责人私发的 AI 开发版契约，并同步冻结边界、目录负责人、检查命令与禁止提交项。
+  * 实现：以触发式文档指针连接总体设计、AI 共享契约、版本化共享契约、`contracts.py` 和运行时 Schema；数据库 schema 按 D-09 冻结，OpenAPI、ML、RAG 检查与跨模块交付要求分别落入对应工作流。
+  * 验证：`git diff --check -- AGENTS.md docs/development-logs/Thunder.md`，通过；`rg -n "共享契约（给ai）|D-09|\.venv/bin/python -m pytest|npm run generate:contracts|python -m pytest ml/tests|check_rag_topk|reports/generated/" AGENTS.md`，确认关键规则已写入；本次只修改 Agent 规则和开发日志，未运行代码测试或构建。
+
+### 问题与处理
+
+* 当前主工作区存在其他成员或任务的未提交修改；使用基于最新 `origin/dev` 的独立 worktree 完成本次文档提交，未切换、覆盖或暂存原工作区内容。
+
+### 后续计划
+
+* 推送 `chore/update-agent-instructions` 任务分支，交由项目负责人合入 `dev`。
