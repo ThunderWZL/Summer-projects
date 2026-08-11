@@ -9,6 +9,7 @@ from app.modules.video_analysis.observation import (
     EvaluabilityGate,
     PersonFrameObservation,
     PpeObservationState,
+    build_person_frame_observations,
     classify_ppe,
 )
 
@@ -22,9 +23,9 @@ def config(**overrides: object) -> CandidateAggregationConfig:
         "minimum_valid_observations": 2,
         "maximum_observation_gap_ms": 400,
         "minimum_negative_observations": {
-            PpeType.HELMET: 2,
+            PpeType.HELMET: 3,
             PpeType.GLOVES: 3,
-            PpeType.VEST: 2,
+            PpeType.VEST: 3,
         },
         "class_confidence_thresholds": {
             "person": 0.5,
@@ -123,6 +124,33 @@ def test_gap_resets_track_stability() -> None:
     assert result.reasons == ("TRACK_UNSTABLE", "INSUFFICIENT_VALID_FRAMES")
 
 
+def test_gate_rejects_a_low_confidence_person() -> None:
+    gate = EvaluabilityGate(config())
+    make_stable(gate)
+    low_confidence = frame(200)
+    low_confidence = PersonFrameObservation(
+        timestamp_ms=low_confidence.timestamp_ms,
+        image_url=low_confidence.image_url,
+        image_width=low_confidence.image_width,
+        image_height=low_confidence.image_height,
+        person_track_id=low_confidence.person_track_id,
+        person=detection("Person", confidence=0.4),
+    )
+
+    result = gate.evaluate(low_confidence)
+
+    assert not result.evaluable
+    assert "PERSON_CONFIDENCE_LOW" in result.reasons
+
+
+def test_gate_rejects_non_increasing_track_timestamps() -> None:
+    gate = EvaluabilityGate(config())
+    gate.evaluate(frame(200))
+
+    with pytest.raises(ValueError, match="strictly increasing"):
+        gate.evaluate(frame(200))
+
+
 def test_clear_bare_hands_are_negative_after_the_coarse_gate() -> None:
     gate = EvaluabilityGate(config())
     make_stable(gate)
@@ -176,7 +204,42 @@ def test_only_the_three_real_ppe_types_can_be_enabled() -> None:
         config(
             enabled_ppe=frozenset({PpeType.HELMET, PpeType.GOGGLES}),
             minimum_negative_observations={
-                PpeType.HELMET: 2,
-                PpeType.GOGGLES: 2,
+                PpeType.HELMET: 3,
+                PpeType.GOGGLES: 3,
             },
         )
+
+
+def test_w03_detections_are_associated_with_the_containing_person() -> None:
+    class RawDetection:
+        def __init__(
+            self,
+            class_name: str,
+            box: tuple[float, float, float, float],
+            track_id: int | None,
+        ) -> None:
+            self.class_name = class_name
+            self.confidence = 0.9
+            self.box = box
+            self.track_id = track_id
+
+    observations = build_person_frame_observations(
+        timestamp_ms=200,
+        image_url="/evidence/200.jpg",
+        image_width=640,
+        image_height=480,
+        detections=(
+            RawDetection("Person", (50, 30, 300, 450), 17),
+            RawDetection("Person", (350, 30, 600, 450), 23),
+            RawDetection("helmet", (100, 40, 180, 100), None),
+            RawDetection("vest", (420, 120, 540, 300), None),
+        ),
+    )
+
+    assert [item.person_track_id for item in observations] == ["17", "23"]
+    assert [
+        detection.class_name for detection in observations[0].associated_ppe
+    ] == ["helmet"]
+    assert [
+        detection.class_name for detection in observations[1].associated_ppe
+    ] == ["vest"]

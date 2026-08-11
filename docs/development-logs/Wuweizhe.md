@@ -97,11 +97,16 @@
   * 完成：增加安全帽、手套和高可视背心的候选启用边界，拒绝人员过小、接触画面边界、严重重叠、轨迹不稳定和连续有效帧不足的观察。
   * 实现：新增视觉内部 `PpeObservationState`、逐类置信阈值和会话显式阈值配置；安全帽仅接受真实 `no_helmet` 负类，手套以未关联正类为主且正类优先，`no_gloves` 不得替代后续 VLM 的双手可见性判断。
   * 验证：`cd backend && python -m pytest tests/modules/video_analysis/test_observation.py`，10 项测试通过。后端未配置 lint 和类型检查命令；本切片不修改前端，未运行前端构建。
+* 19:55 `feat(video-analysis): 聚合去重PPE候选证据`
+  * 完成：将同会话、同人员轨迹、同一种 PPE 的连续负向观察聚合为一条去重 `CandidateEvidence`，生成严格递增的前、中、后证据帧和稳定证据 URL。
+  * 实现：手套与背心使用持续未关联正类的 `MISSING_POSITIVE_ASSOCIATION`，安全帽仅保留真实 `no_helmet` 检测框；采用会话内确定性候选 ID、保守跨帧置信度和可追溯聚合参数，并增加防目录穿越和证据键冲突的本地 JPEG 缓存。W-03 原始像素检测通过包含关系关联到匿名人员轨迹。
+  * 验证：`cd backend && python -m pytest tests/test_contracts.py tests/domain tests/modules/video_analysis`，114 项契约、领域和视频分析测试通过；`python -m pytest ml/tests/test_video_inference.py`，18 项 W-03 回归测试通过；使用真实 `TrackedDetection` 类型执行 W-03 到 W-04 关联冒烟测试，通过；`python -m py_compile app/modules/video_analysis/observation.py app/modules/video_analysis/candidate_aggregator.py app/modules/video_analysis/evidence_store.py`，通过。完整后端测试因当前环境缺少 `fastapi` 在 6 个 API 文件收集阶段停止；完整 ML 测试因当前环境缺少 `imagehash` 在数据审计测试收集阶段停止。后端未配置 lint 和类型检查命令；本切片不修改前端，未运行前端构建。
 
 ### 问题与处理
 
 * 最新规范尚未冻结人员尺寸、边界、重叠和连续帧的生产数值；实现要求会话显式传入并校验这些参数，避免把实验值写死为业务结论。
+* 初版隔离用例错误地假设同一人缺手套和背心时只生成一条候选；按“一种 PPE 一条候选”契约修正用例，并补充背心独立候选回归测试。
 
 ### 后续计划
 
-* 聚合同轨迹、同 PPE 的连续观察，生成去重 `CandidateEvidence` 和严格递增的前中后证据帧。
+* 请项目负责人集成测试 `feat/ppe-candidate-aggregation`；生产阈值冻结后，由分析会话显式注入配置并接入 Case 创建入口。
