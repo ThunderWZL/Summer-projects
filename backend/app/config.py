@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     vlm_max_frames: int = 8
     vlm_max_image_edge: int = 1280
     vlm_max_output_tokens: int = 512
+    vlm_max_retries: int = Field(default=2, ge=0)
+    vlm_retry_delay_seconds: float = Field(default=0.5, ge=0)
     embedding_api_key: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str = "text-embedding-3-small"

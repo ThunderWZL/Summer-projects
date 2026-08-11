@@ -32,7 +32,7 @@ def parse(
     模型身份字段（model_name/provider/parameters）一律取自请求上下文，
     绝不信任模型自由文本里的自报值；content 必须是合法 JSON 对象，
     且不能包含契约之外的字段。任何一步失败都抛 VlmParseError，
-    由调用方统一落成“不确定”复核，禁止脏文本进入状态机。
+    由调用方按技术失败重试，禁止脏文本进入状态机。
     """
     try:
         payload = json.loads(raw.content)
