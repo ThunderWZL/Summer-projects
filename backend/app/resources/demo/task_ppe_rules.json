@@ -1,0 +1,9 @@
+{
+  "tasks": [
+    {"task_code": "HOT_WORK_CUTTING", "hazards": ["飞溅", "强光"], "required_ppe": ["goggles", "helmet"], "rectification_window_minutes": 60},
+    {"task_code": "HANDLING_REBAR", "hazards": ["手部伤害风险"], "required_ppe": ["gloves"], "rectification_window_minutes": 30},
+    {"task_code": "ROTATING_EQUIPMENT_OPERATION", "hazards": ["卷入风险"], "required_ppe": ["helmet"], "exception_note": "旋转设备旁不宜简单要求佩戴手套，应评估卷入风险并采取防卷入措施", "rectification_window_minutes": 60},
+    {"task_code": "VEHICLE_ZONE_OPERATION", "hazards": ["车辆碰撞"], "required_ppe": ["vest"], "rectification_window_minutes": 30},
+    {"task_code": "GENERAL_DUTY", "hazards": [], "required_ppe": [], "exception_note": "普通作业无额外防护要求", "rectification_window_minutes": 60}
+  ]
+}
