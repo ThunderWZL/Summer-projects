@@ -290,3 +290,25 @@
 ### 后续计划
 
 * 实现 resolver、受控 DeepSeek Agent、确定性假实现和调查组装服务，并运行后端全量测试。
+
+## 2026-08-14
+
+### 当日目标
+
+* 完成确定性调查解析、受控 DeepSeek 工具调用和调查服务组装，并验证切片五语义。
+
+### 开发记录
+
+* 00:03 `feat(investigation): 实现确定性调查与受控Agent`
+  * 完成：实现 resolver 优先的调查上下文、仅允许两类只读工具的 Agent 循环、确定性假实现和调查结果持久化组装。
+  * 实现：依据 DeepSeek 与 LangChain 最新官方文档绑定工具 schema、透传 `tool_call_id`、显式使用官方 API 地址，并通过 `extra_body` 关闭思考模式；提示词冻结 resolver 事实并声明最终 JSON 字段。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/ tests/modules/investigation/ -q`，116 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -ra`，在首个既有 API 用例长时间无输出，且主工作区可独立复现同一阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
+
+### 问题与处理
+
+* 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
+* 后端全量套件在既有 API 测试发生环境性阻塞；中断后用主工作区单测复现，确认并非本任务分支引入。
+
+### 后续计划
+
+* 推送 `feat/agent-investigation` 任务分支，交由项目负责人验收；真实 DeepSeek 调用因未配置密钥与可选 AI 依赖未运行。
