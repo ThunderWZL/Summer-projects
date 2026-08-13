@@ -1,5 +1,8 @@
 from datetime import datetime
 
+import pytest
+from pydantic import ValidationError
+
 from app.contracts import ActorRole, PpeType
 from app.domain.inmemory.actor_roles import DemoUserDirectory
 from app.domain.inmemory.site_context import MemorySiteContext
@@ -91,6 +94,19 @@ def test_unknown_task_code_has_no_matrix() -> None:
     context = make_context()
 
     assert context.get_task_ppe_matrix("NO_SUCH_TASK") is None
+
+
+@pytest.mark.parametrize("minutes", [0, -1])
+def test_task_ppe_matrix_requires_positive_rectification_window(
+    minutes: int,
+) -> None:
+    with pytest.raises(ValidationError):
+        TaskPpeMatrix(
+            task_code="HANDLING_REBAR",
+            hazards=["手部伤害风险"],
+            required_ppe=[PpeType.GLOVES],
+            rectification_window_minutes=minutes,
+        )
 
 
 def test_list_videos_returns_six_channels() -> None:

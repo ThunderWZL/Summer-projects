@@ -269,3 +269,24 @@
 ### 后续计划
 
 * 推送 `fix/vlm-failure-split` 任务分支，交由项目负责人复验并合入 `dev`。
+
+## 2026-08-13
+
+### 当日目标
+
+* 完成切片五的配置化业务上下文、确定性 PPE 解析和受控 Agent 调查能力。
+
+### 开发记录
+
+* 23:50 `feat(context): 支持配置化演示作业规则`
+  * 完成：将五类演示任务规则和六路场景分配迁移到受校验的 JSON 配置，支持更换场景任务映射而无需修改 Python 代码。
+  * 实现：内存现场上下文从包内资源构造视频、区域、许可、责任主体和任务矩阵；校验任务、摄像头与视频唯一性、PPE 枚举、任务引用及正数整改窗口。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_site_context.py -q`，15 项通过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
+
+### 问题与处理
+
+* 主工作区存在其他任务的未提交修改；本任务使用基于最新 `origin/dev` 的独立 worktree，未切换、暂存或覆盖原工作区内容。
+
+### 后续计划
+
+* 实现 resolver、受控 DeepSeek Agent、确定性假实现和调查组装服务，并运行后端全量测试。
