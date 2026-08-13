@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.contracts import ActorRole, PpeType
 
@@ -68,7 +68,7 @@ class TaskPpeMatrix(SiteContextModel):
     hazards: list[str]
     required_ppe: list[PpeType]
     exception_note: str | None = None
-    rectification_window_minutes: int
+    rectification_window_minutes: int = Field(gt=0)
 
 
 class ResponsibleParty(SiteContextModel):

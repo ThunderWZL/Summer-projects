@@ -6,6 +6,8 @@ from fastapi import Depends
 
 from app.domain.case_store import CaseStorePort
 from app.domain.case_workflow import CaseWorkflow
+from app.domain.investigation import InvestigationPort
+from app.domain.resolver import DeterministicInvestigationResolver, InvestigationResolverPort
 from app.domain.inmemory.actor_roles import DemoUserDirectory
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
@@ -19,6 +21,10 @@ from app.modules.requirements_rag.embedding import (
 from app.modules.requirements_rag.service import RequirementsRagService
 from app.modules.requirements_rag.store import PersistentVectorStore
 from app.modules.requirements_rag.chroma import ChromaVectorStore
+from app.modules.investigation.agent import DeepSeekChatModelAdapter, InvestigationAgent, InvestigationAgentPort
+from app.modules.investigation.fake import FixedInvestigationAgent
+from app.modules.investigation.service import InvestigationService
+from app.modules.investigation.tools import InvestigationTools
 from app.config import get_settings
 
 
@@ -69,6 +75,42 @@ def get_requirement_retriever() -> RequirementsRagService:
         store=store,
         embedder=embedder,
         default_top_k=settings.rag_top_k,
+    )
+
+
+@lru_cache
+def get_investigation_resolver() -> InvestigationResolverPort:
+    return DeterministicInvestigationResolver(get_site_context())
+
+
+@lru_cache
+def get_investigation_tools() -> InvestigationTools:
+    return InvestigationTools(get_site_context(), get_requirement_retriever())
+
+
+@lru_cache
+def get_investigation_agent() -> InvestigationAgentPort:
+    settings = get_settings()
+    tools = get_investigation_tools()
+    if not settings.deepseek_api_key:
+        return FixedInvestigationAgent(tools)
+    return InvestigationAgent(
+        DeepSeekChatModelAdapter(
+            api_key=settings.deepseek_api_key,
+            model=settings.agent_llm_model,
+            temperature=settings.agent_llm_temperature,
+            timeout=settings.agent_llm_timeout_seconds,
+            max_retries=settings.agent_llm_max_retries,
+        ),
+        tools,
+        max_tool_rounds=settings.agent_max_tool_rounds,
+    )
+
+
+@lru_cache
+def get_investigation_port() -> InvestigationPort:
+    return InvestigationService(
+        get_case_store(), get_investigation_resolver(), get_investigation_agent()
     )
 
 
