@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.contracts import PpeType
 from app.domain.site_context import (
@@ -14,207 +18,149 @@ from app.domain.site_context import (
 )
 
 SCENARIO_STARTED_AT = datetime.fromisoformat("2026-08-07T09:00:00+08:00")
+_RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources" / "demo"
+
+
+class _ConfigModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class _TaskRule(_ConfigModel):
+    task_code: str = Field(min_length=1)
+    hazards: list[str]
+    required_ppe: list[PpeType]
+    exception_note: str | None = None
+    rectification_window_minutes: int = Field(gt=0)
+
+
+class _TaskRules(_ConfigModel):
+    tasks: list[_TaskRule]
+
+    @model_validator(mode="after")
+    def task_codes_must_be_unique(self) -> _TaskRules:
+        codes = [task.task_code for task in self.tasks]
+        if len(codes) != len(set(codes)):
+            raise ValueError("task_code must be unique")
+        return self
+
+
+class _SceneAssignment(_ConfigModel):
+    camera_id: str = Field(min_length=1)
+    camera_name: str = Field(min_length=1)
+    zone_id: str = Field(min_length=1)
+    zone_name: str = Field(min_length=1)
+    zone_type: str = Field(min_length=1)
+    video_id: str = Field(min_length=1)
+    video_title: str = Field(min_length=1)
+    task_code: str | None = None
+    responsible_party_id: str = Field(min_length=1)
+    responsible_party_name: str = Field(min_length=1)
+    responsible_party_kind: str = Field(min_length=1)
+
+
+class _SceneAssignments(_ConfigModel):
+    scenes: list[_SceneAssignment]
+
+    @model_validator(mode="after")
+    def camera_and_video_ids_must_be_unique(self) -> _SceneAssignments:
+        for field in ("camera_id", "video_id"):
+            values = [getattr(scene, field) for scene in self.scenes]
+            if len(values) != len(set(values)):
+                raise ValueError(f"{field} must be unique")
+        return self
 
 
 class MemorySiteContext:
-    """按设计文档 §8.1 六路通道种子化的内存业务上下文。
+    """Configuration-backed deterministic site context for the six demo scenes."""
 
-    六路不是六个独立产品流程，而是演示 Agent 会根据业务上下文给出不同
-    调查结论：CAM-04 旋转设备与 CAM-03 搬运钢筋对手套的矩阵结论必须不同。
-    关键业务事实全部由这里确定性产出，禁止运行时随机生成。
-    """
-
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        task_rules_path: str | Path | None = None,
+        scene_assignments_path: str | Path | None = None,
+    ) -> None:
+        rules = _TaskRules.model_validate(
+            self._load_json(task_rules_path or _RESOURCE_DIR / "task_ppe_rules.json")
+        )
+        assignments = _SceneAssignments.model_validate(
+            self._load_json(
+                scene_assignments_path or _RESOURCE_DIR / "scene_assignments.json"
+            )
+        )
+        self._matrices = {
+            rule.task_code: TaskPpeMatrix(
+                task_code=rule.task_code,
+                hazards=list(rule.hazards),
+                required_ppe=list(rule.required_ppe),
+                exception_note=rule.exception_note,
+                rectification_window_minutes=rule.rectification_window_minutes,
+            )
+            for rule in rules.tasks
+        }
+        unknown_tasks = {
+            scene.task_code
+            for scene in assignments.scenes
+            if scene.task_code is not None and scene.task_code not in self._matrices
+        }
+        if unknown_tasks:
+            raise ValueError("scene task_code must exist in task rules")
         self._zones = {
-            "zone-01": ZoneInfo(
-                zone_id="zone-01", name="脚手架区", zone_type="SCAFFOLD"
-            ),
-            "zone-02": ZoneInfo(
-                zone_id="zone-02", name="切割区", zone_type="CUTTING"
-            ),
-            "zone-03": ZoneInfo(
-                zone_id="zone-03", name="钢筋区", zone_type="REBAR"
-            ),
-            "zone-04": ZoneInfo(
-                zone_id="zone-04",
-                name="旋转设备区",
-                zone_type="ROTATING_EQUIPMENT",
-            ),
-            "zone-05": ZoneInfo(
-                zone_id="zone-05", name="车辆作业区", zone_type="VEHICLE"
-            ),
-            "zone-06": ZoneInfo(
-                zone_id="zone-06", name="普通作业区", zone_type="GENERAL"
-            ),
+            scene.zone_id: ZoneInfo(
+                zone_id=scene.zone_id,
+                name=scene.zone_name,
+                zone_type=scene.zone_type,
+            )
+            for scene in assignments.scenes
         }
         self._cameras = {
-            "CAM-01": CameraInfo(
-                camera_id="CAM-01", name="脚手架机位", zone_id="zone-01"
-            ),
-            "CAM-02": CameraInfo(
-                camera_id="CAM-02", name="切割机位", zone_id="zone-02"
-            ),
-            "CAM-03": CameraInfo(
-                camera_id="CAM-03", name="钢筋机位", zone_id="zone-03"
-            ),
-            "CAM-04": CameraInfo(
-                camera_id="CAM-04", name="旋转设备机位", zone_id="zone-04"
-            ),
-            "CAM-05": CameraInfo(
-                camera_id="CAM-05", name="车辆作业机位", zone_id="zone-05"
-            ),
-            "CAM-06": CameraInfo(
-                camera_id="CAM-06", name="普通作业机位", zone_id="zone-06"
-            ),
+            scene.camera_id: CameraInfo(
+                camera_id=scene.camera_id,
+                name=scene.camera_name,
+                zone_id=scene.zone_id,
+            )
+            for scene in assignments.scenes
         }
         self._videos = [
             VideoInfo(
-                video_id=f"video-0{index}",
-                camera_id=camera_id,
-                title=title,
-                local_path=f"/data/demo/{camera_id.lower()}.mp4",
-                source_url=None,
+                video_id=scene.video_id,
+                camera_id=scene.camera_id,
+                title=scene.video_title,
+                local_path=f"/data/demo/{scene.camera_id.lower()}.mp4",
                 duration_ms=600_000,
                 scenario_started_at=SCENARIO_STARTED_AT,
             )
-            for index, (camera_id, title) in enumerate(
-                [
-                    ("CAM-01", "脚手架区"),
-                    ("CAM-02", "切割区"),
-                    ("CAM-03", "钢筋区"),
-                    ("CAM-04", "旋转设备区"),
-                    ("CAM-05", "车辆作业区"),
-                    ("CAM-06", "普通作业区"),
-                ],
-                start=1,
+            for scene in assignments.scenes
+        ]
+        self._parties = [
+            ResponsibleParty(
+                party_id=scene.responsible_party_id,
+                name=scene.responsible_party_name,
+                kind=scene.responsible_party_kind,
+                zone_id=scene.zone_id,
             )
+            for scene in assignments.scenes
         ]
         self._permits = [
             WorkPermit(
-                permit_id="wp-0201",
-                zone_id="zone-02",
-                task_code="HOT_WORK_CUTTING",
-                hazards=["飞溅", "强光"],
-                responsible_party_id="team-electric-01",
+                permit_id=f"wp-{scene.camera_id.removeprefix('CAM-')}01",
+                zone_id=scene.zone_id,
+                task_code=scene.task_code,
+                hazards=list(self._matrices[scene.task_code].hazards),
+                responsible_party_id=scene.responsible_party_id,
                 starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
                 ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
-            ),
-            WorkPermit(
-                permit_id="wp-0301",
-                zone_id="zone-03",
-                task_code="HANDLING_REBAR",
-                hazards=["手部伤害风险"],
-                responsible_party_id="team-structure-01",
-                starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
-                ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
-            ),
-            WorkPermit(
-                permit_id="wp-0401",
-                zone_id="zone-04",
-                task_code="ROTATING_EQUIPMENT_OPERATION",
-                hazards=["卷入风险"],
-                responsible_party_id="team-mechanical-01",
-                starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
-                ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
-            ),
-            WorkPermit(
-                permit_id="wp-0501",
-                zone_id="zone-05",
-                task_code="VEHICLE_ZONE_OPERATION",
-                hazards=["车辆碰撞"],
-                responsible_party_id="team-logistics-01",
-                starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
-                ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
-            ),
-            WorkPermit(
-                permit_id="wp-0601",
-                zone_id="zone-06",
-                task_code="GENERAL_DUTY",
-                hazards=[],
-                responsible_party_id="team-general-01",
-                starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
-                ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
-            ),
-            # zone-01（CAM-01）故意没有许可，用于“区域无有效许可 → 请求人工补充事实”。
+                status=WorkPermitStatus.ACTIVE,
+            )
+            for scene in assignments.scenes
+            if scene.task_code is not None
         ]
-        self._matrices = {
-            "HOT_WORK_CUTTING": TaskPpeMatrix(
-                task_code="HOT_WORK_CUTTING",
-                hazards=["飞溅", "强光"],
-                required_ppe=[PpeType.GOGGLES, PpeType.HELMET],
-                rectification_window_minutes=60,
-            ),
-            "HANDLING_REBAR": TaskPpeMatrix(
-                task_code="HANDLING_REBAR",
-                hazards=["手部伤害风险"],
-                required_ppe=[PpeType.GLOVES],
-                rectification_window_minutes=30,
-            ),
-            "ROTATING_EQUIPMENT_OPERATION": TaskPpeMatrix(
-                task_code="ROTATING_EQUIPMENT_OPERATION",
-                hazards=["卷入风险"],
-                required_ppe=[PpeType.HELMET],
-                exception_note="旋转设备旁不宜简单要求佩戴手套，应评估卷入风险并采取防卷入措施",
-                rectification_window_minutes=60,
-            ),
-            "VEHICLE_ZONE_OPERATION": TaskPpeMatrix(
-                task_code="VEHICLE_ZONE_OPERATION",
-                hazards=["车辆碰撞"],
-                required_ppe=[PpeType.VEST],
-                rectification_window_minutes=30,
-            ),
-            "GENERAL_DUTY": TaskPpeMatrix(
-                task_code="GENERAL_DUTY",
-                hazards=[],
-                required_ppe=[],
-                exception_note="普通作业无额外防护要求",
-                rectification_window_minutes=60,
-            ),
-        }
-        self._parties = [
-            ResponsibleParty(
-                party_id="team-scaffold-01",
-                name="架子班组",
-                kind="班组",
-                zone_id="zone-01",
-            ),
-            ResponsibleParty(
-                party_id="team-electric-01",
-                name="电气班组",
-                kind="班组",
-                zone_id="zone-02",
-            ),
-            ResponsibleParty(
-                party_id="team-structure-01",
-                name="结构班组",
-                kind="班组",
-                zone_id="zone-03",
-            ),
-            ResponsibleParty(
-                party_id="team-mechanical-01",
-                name="机械班组",
-                kind="班组",
-                zone_id="zone-04",
-            ),
-            ResponsibleParty(
-                party_id="team-logistics-01",
-                name="物流班组",
-                kind="班组",
-                zone_id="zone-05",
-            ),
-            ResponsibleParty(
-                party_id="team-general-01",
-                name="综合班组",
-                kind="班组",
-                zone_id="zone-06",
-            ),
-        ]
+
+    @staticmethod
+    def _load_json(path: str | Path) -> object:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
 
     def get_zone_at(self, camera_id: str) -> ZoneInfo | None:
         camera = self._cameras.get(camera_id)
-        if camera is None:
-            return None
-        return self._zones.get(camera.zone_id)
+        return self._zones.get(camera.zone_id) if camera else None
 
     def find_active_work_permits(
         self, zone_id: str, occurred_at: datetime
@@ -243,7 +189,4 @@ class MemorySiteContext:
         return list(self._videos)
 
     def get_video(self, video_id: str) -> VideoInfo | None:
-        return next(
-            (video for video in self._videos if video.video_id == video_id),
-            None,
-        )
+        return next((video for video in self._videos if video.video_id == video_id), None)

@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     vlm_max_output_tokens: int = 512
     vlm_max_retries: int = Field(default=2, ge=0)
     vlm_retry_delay_seconds: float = Field(default=0.5, ge=0)
+    deepseek_api_key: str | None = None
+    agent_llm_model: str = "deepseek-v4-flash"
+    agent_llm_timeout_seconds: float = Field(default=30, gt=0)
+    agent_llm_max_retries: int = Field(default=2, ge=0)
+    agent_max_tool_rounds: int = Field(default=6, ge=1)
+    agent_llm_temperature: float = Field(default=0, ge=0, le=2)
     embedding_api_key: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str = "text-embedding-3-small"
