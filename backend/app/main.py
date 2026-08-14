@@ -4,6 +4,8 @@ from app.api.errors import case_workflow_exception_handler
 from app.api.routers.cases import router as cases_router
 from app.api.routers.demo import router as demo_router
 from app.api.routers.requirements import router as requirements_router
+from app.api.routers.sessions import router as sessions_router
+from app.api.ws import router as websocket_router
 from app.contracts import SHARED_COMMANDS, SHARED_CONTRACTS
 from app.domain.case_workflow import CaseWorkflowError
 
@@ -16,6 +18,8 @@ app = FastAPI(
 app.include_router(demo_router)
 app.include_router(requirements_router)
 app.include_router(cases_router)
+app.include_router(sessions_router)
+app.include_router(websocket_router)
 app.add_exception_handler(
     CaseWorkflowError,
     case_workflow_exception_handler,

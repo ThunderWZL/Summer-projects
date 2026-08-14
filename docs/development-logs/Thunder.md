@@ -309,11 +309,17 @@
   * 实现：端口复用共享 `AnalysisStage` 与 `AnalysisEvent` 契约，并提供稳定的视频和会话不存在领域错误。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py::test_analysis_session_and_port_expose_the_frozen_contract -q`，1 项通过；`git diff --check`，通过。
 
+* 20:51 `feat(analysis-session): 实现单路分析与实时事件`
+  * 完成：提供分析会话启动/幂等停止 REST、有限 MJPEG 占位流和 WebSocket 实时事件，并在换路时等待旧 runner 完成资源释放。
+  * 实现：EventHub 按会话递增 sequence 并实时扇出；会话编排映射 `VlmProcessingFailed`；确定性假实现只引用已有 Case，且仅演示 `helmet/gloves/vest` 候选；断开 WebSocket 时主动清理订阅。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，22 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，202 项通过、1 项跳过；后端全量测试在既有 `tests/api/test_cases_api.py` 处无输出阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
 * 后端全量套件在既有 API 测试发生环境性阻塞；中断后用主工作区单测复现，确认并非本任务分支引入。
+* 切片六测试发现运行时类型别名导入失败、同步依赖挂起、WebSocket 断开不清理、runner 技术异常未映射、停止返回早于资源释放及未启用 PPE 被演示；均已补回归测试并修复。
 
 ### 后续计划
 
-* 推送 `feat/agent-investigation` 任务分支，交由项目负责人验收；真实 DeepSeek 调用因未配置密钥与可选 AI 依赖未运行。
+* 推送 `feat/analysis-sessions` 任务分支，交由项目负责人验收；真实视频推理接线等待对应模块交付。

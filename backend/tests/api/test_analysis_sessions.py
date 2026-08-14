@@ -1,0 +1,129 @@
+import asyncio
+
+from httpx import ASGITransport, AsyncClient
+
+from app.api.deps import (
+    get_case_store,
+    get_event_hub,
+    get_inmemory_video_analysis,
+    get_session_manager,
+)
+from app.main import app
+
+
+def setup_function() -> None:
+    get_session_manager.cache_clear()
+    get_inmemory_video_analysis.cache_clear()
+    get_event_hub.cache_clear()
+    get_case_store.cache_clear()
+
+
+async def request(method: str, path: str, json: dict | None = None):
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        return await client.request(method, path, json=json)
+
+
+def test_start_and_idempotent_stop_return_session_transport_urls() -> None:
+    async def scenario():
+        start = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+        )
+        session_id = start.json()["session_id"]
+        first = await request(
+            "POST", f"/api/v1/analysis-sessions/{session_id}/stop"
+        )
+        second = await request(
+            "POST", f"/api/v1/analysis-sessions/{session_id}/stop"
+        )
+        return start, first, second
+
+    start, first, second = asyncio.run(scenario())
+
+    assert 200 <= start.status_code < 300
+    body = start.json()
+    session_id = body["session_id"]
+    assert body == {
+        "session_id": session_id,
+        "video_id": "video-02",
+        "stage": "STARTING",
+        "stream_url": f"/api/v1/analysis-sessions/{session_id}/stream.mjpg",
+        "events_url": f"/ws/v1/analysis-sessions/{session_id}/events",
+    }
+    assert "local_path" not in start.text
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["stage"] == "STOPPING"
+
+
+def test_start_request_rejects_extra_fields() -> None:
+    response = asyncio.run(
+        request(
+            "POST",
+            "/api/v1/analysis-sessions",
+            {"video_id": "video-02", "local_path": "/private/demo.mp4"},
+        )
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "extra_forbidden"
+
+
+def test_unknown_video_and_session_return_stable_error_responses() -> None:
+    async def scenario():
+        video = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-99"}
+        )
+        session = await request(
+            "POST", "/api/v1/analysis-sessions/session-99/stop"
+        )
+        return video, session
+
+    video, session = asyncio.run(scenario())
+
+    assert video.status_code == 404
+    assert video.json() == {
+        "code": "ANALYSIS_VIDEO_NOT_FOUND",
+        "message": "analysis video video-99 was not found",
+        "current_version": None,
+    }
+    assert session.status_code == 404
+    assert session.json() == {
+        "code": "ANALYSIS_SESSION_NOT_FOUND",
+        "message": "analysis session session-99 was not found",
+        "current_version": None,
+    }
+
+
+def test_mjpeg_endpoint_has_a_finite_multipart_jpeg_without_private_paths() -> None:
+    async def scenario():
+        start = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+        )
+        stream = await request("GET", start.json()["stream_url"])
+        return stream
+
+    stream = asyncio.run(scenario())
+
+    assert stream.status_code == 200
+    assert stream.headers["content-type"].startswith(
+        "multipart/x-mixed-replace; boundary=frame"
+    )
+    assert stream.content.startswith(
+        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n\xff\xd8"
+    )
+    assert stream.content.endswith(b"\xff\xd9\r\n--frame--\r\n")
+    assert b"local_path" not in stream.content
+    assert b"/data/" not in stream.content
+
+
+def test_unknown_mjpeg_session_returns_error_response_instead_of_a_stream() -> None:
+    response = asyncio.run(
+        request("GET", "/api/v1/analysis-sessions/session-99/stream.mjpg")
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ANALYSIS_SESSION_NOT_FOUND"
