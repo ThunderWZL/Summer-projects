@@ -12,7 +12,9 @@ from app.domain.inmemory.actor_roles import DemoUserDirectory
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.domain.inmemory.site_context import MemorySiteContext
+from app.domain.inmemory.video_analysis import InMemoryVideoAnalysis
 from app.domain.site_context import SiteContextPort, UserDirectoryPort
+from app.domain.video_analysis import VideoAnalysisPort
 from app.modules.requirements_rag.embedding import (
     DeterministicEmbeddingClient,
     EmbeddingClientPort,
@@ -26,6 +28,8 @@ from app.modules.investigation.fake import FixedInvestigationAgent
 from app.modules.investigation.service import InvestigationService
 from app.modules.investigation.tools import InvestigationTools
 from app.config import get_settings
+from app.services.event_hub import EventHub
+from app.services.session_manager import SessionManager
 
 
 Clock = Callable[[], datetime]
@@ -53,6 +57,31 @@ def get_case_store() -> CaseStorePort:
 
 def get_clock() -> Clock:
     return lambda: datetime.now(timezone.utc)
+
+
+@lru_cache
+def get_event_hub() -> EventHub:
+    return EventHub()
+
+
+@lru_cache
+def get_inmemory_video_analysis() -> InMemoryVideoAnalysis:
+    return InMemoryVideoAnalysis(get_site_context(), get_case_store())
+
+
+@lru_cache
+def get_session_manager() -> SessionManager:
+    fake = get_inmemory_video_analysis()
+    return SessionManager(
+        get_event_hub(),
+        get_site_context().get_video,
+        fake.get_stream,
+        fake.run_session,
+    )
+
+
+async def get_video_analysis_port() -> VideoAnalysisPort:
+    return get_session_manager()
 
 
 @lru_cache
