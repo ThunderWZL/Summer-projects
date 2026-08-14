@@ -304,6 +304,11 @@
   * 实现：依据 DeepSeek 与 LangChain 最新官方文档绑定工具 schema、透传 `tool_call_id`、显式使用官方 API 地址，并通过 `extra_body` 关闭思考模式；提示词冻结 resolver 事实并声明最终 JSON 字段。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/ tests/modules/investigation/ -q`，116 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -ra`，在首个既有 API 用例长时间无输出，且主工作区可独立复现同一阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
 
+* 20:51 `feat(video-analysis): 定义视频分析会话端口`
+  * 完成：冻结分析会话值对象及开始、停止、画面流和事件订阅四个端口方法。
+  * 实现：端口复用共享 `AnalysisStage` 与 `AnalysisEvent` 契约，并提供稳定的视频和会话不存在领域错误。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py::test_analysis_session_and_port_expose_the_frozen_contract -q`，1 项通过；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
