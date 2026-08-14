@@ -38,16 +38,30 @@ EXPECTED_TABLES = {
 }
 
 
-def test_schema_contains_the_designed_tables_and_candidate_uniqueness() -> None:
+def test_schema_contains_the_designed_tables_and_business_uniqueness() -> None:
     engine = create_database_engine("sqlite:///:memory:")
     initialize_schema(engine)
     inspector = inspect(engine)
 
     assert set(inspector.get_table_names()) == EXPECTED_TABLES
-    unique_constraints = inspector.get_unique_constraints("cases")
+    case_constraints = inspector.get_unique_constraints("cases")
     assert any(
         constraint["column_names"] == ["candidate_id"]
-        for constraint in unique_constraints
+        for constraint in case_constraints
+    )
+
+    investigation_constraints = inspector.get_unique_constraints(
+        "investigations"
+    )
+    assert any(
+        constraint["column_names"] == ["case_id"]
+        for constraint in investigation_constraints
+    )
+
+    evidence_constraints = inspector.get_unique_constraints("case_evidence")
+    assert any(
+        constraint["column_names"] == ["case_id", "timestamp_ms"]
+        for constraint in evidence_constraints
     )
 
 

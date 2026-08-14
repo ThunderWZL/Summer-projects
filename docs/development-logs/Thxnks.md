@@ -54,3 +54,24 @@
 ### 后续计划
 
 * 推送 X-01 补充提交并交由项目负责人评审；合入 `dev` 并冻结 schema 后，从最新 `dev` 开始 X-02 `CaseStore`。
+
+## 2026-08-14
+
+### 当日目标
+
+* 增强 X-01 调查快照与案件证据的数据库唯一约束，避免同一案件产生歧义数据。
+
+### 开发记录
+
+* 11:32 `fix(database): 增强调查与证据唯一约束`
+  * 完成：限制每个案件仅保存一份当前调查快照，并禁止同一案件出现重复时间戳的证据帧。
+  * 实现：使用数据库唯一约束替换仅提供查询优化的普通索引，并增加 schema 反射回归测试。
+  * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/adapters/database/test_models.py -q`，6 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest`，174 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。
+
+### 问题与处理
+
+* 当前主工作区包含其他任务的未提交修改；使用独立 worktree 完成本次修复，未暂存或改动这些文件。
+
+### 后续计划
+
+* 跳过 X-02，继续实现 X-03 案件页面与 X-04 人工复核页面。
