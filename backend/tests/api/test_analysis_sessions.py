@@ -144,3 +144,25 @@ def test_stopped_session_mjpeg_returns_conflict_instead_of_a_stream() -> None:
 
     assert response.status_code == 409
     assert response.json()["code"] == "ANALYSIS_SESSION_NOT_ACTIVE"
+
+
+def test_finished_fake_session_stream_remains_available_until_stop() -> None:
+    async def scenario():
+        start = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-01"}
+        )
+        session_id = start.json()["session_id"]
+        events = get_session_manager().subscribe_events(session_id)
+        while True:
+            event = await anext(events)
+            if event.event_type == "SESSION_FINISHED":
+                break
+        await events.aclose()
+        stream = await request("GET", start.json()["stream_url"])
+        await request("POST", f"/api/v1/analysis-sessions/{session_id}/stop")
+        return stream
+
+    response = asyncio.run(scenario())
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"--frame\r\nContent-Type: image/jpeg")

@@ -319,12 +319,18 @@
   * 实现：会话生命周期增加异步互斥并复用内部停止路径；非活动流返回稳定的 `ANALYSIS_SESSION_NOT_ACTIVE` 冲突响应；假实现复用视觉模块的三类 PPE 支持集合。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，25 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，204 项通过、1 项跳过；`git diff --check`，通过。
 
+* 20:51 `fix(analysis-session): 保留已完成会话的演示流`
+  * 完成：假分析快速完成后仍可读取有限 MJPEG 结果，显式停止或 VLM 失败后继续拒绝取流。
+  * 实现：将 runner 活动状态与流可读状态分离，避免 POST 后稍迟请求流时因自然完成返回 409，同时保持停止释放资源语义。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，26 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，204 项通过、1 项跳过；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
 * 后端全量套件在既有 API 测试发生环境性阻塞；中断后用主工作区单测复现，确认并非本任务分支引入。
 * 切片六测试发现运行时类型别名导入失败、同步依赖挂起、WebSocket 断开不清理、runner 技术异常未映射、停止返回早于资源释放及未启用 PPE 被演示；均已补回归测试并修复。
 * 双轴复审发现并发换路可产生重叠 runner、停止后仍可重新取流；已增加生命周期互斥、活动状态校验和回归测试。
+* 修复后复审发现假 runner 过快完成会使首次 MJPEG 请求返回 409；已分离流可读状态并覆盖完成后读取、停止后拒绝两种行为。
 
 ### 后续计划
 

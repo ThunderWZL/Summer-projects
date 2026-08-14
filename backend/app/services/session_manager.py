@@ -45,6 +45,7 @@ class SessionManager(VideoAnalysisPort):
         self._run_session = run_session
         self._sessions: dict[str, AnalysisSession] = {}
         self._active_session_id: str | None = None
+        self._streamable_session_ids: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._lifecycle_lock = asyncio.Lock()
 
@@ -61,13 +62,14 @@ class SessionManager(VideoAnalysisPort):
             )
             self._sessions[session.session_id] = session
             self._active_session_id = session.session_id
+            self._streamable_session_ids.add(session.session_id)
             task = asyncio.create_task(self._execute(session))
             self._tasks[session.session_id] = task
             return session
 
     def get_stream(self, session_id: str) -> AsyncIterator[bytes]:
         self._require_session(session_id)
-        if self._active_session_id != session_id:
+        if session_id not in self._streamable_session_ids:
             raise AnalysisSessionNotActive(session_id)
         return self._get_stream(session_id)
 
@@ -85,6 +87,7 @@ class SessionManager(VideoAnalysisPort):
             return session
         stopped = replace(session, stage=AnalysisStage.STOPPING)
         self._sessions[session_id] = stopped
+        self._streamable_session_ids.discard(session_id)
         self._clear_active_session(session_id)
         await self.publish_progress(
             session_id,
@@ -160,6 +163,7 @@ class SessionManager(VideoAnalysisPort):
         self, session_id: str, error: VlmProcessingFailed
     ) -> AnalysisEvent:
         self._require_session(session_id)
+        self._streamable_session_ids.discard(session_id)
         event = await self._event_hub.publish(
             session_id,
             AnalysisEventType.SESSION_FAILED,
