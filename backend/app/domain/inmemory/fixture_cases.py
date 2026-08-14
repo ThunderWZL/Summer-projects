@@ -10,6 +10,12 @@ from app.contracts import (
     RectificationEvidenceSubmissionRecord,
     VlmReviewResult,
 )
+from app.domain.inmemory.fixture_candidates import build_fixture_candidate
+from app.domain.inmemory.site_context import MemorySiteContext
+from app.domain.resolver import DeterministicInvestigationResolver
+
+
+_RESOLVER = DeterministicInvestigationResolver(MemorySiteContext())
 
 
 def _candidate(
@@ -18,56 +24,21 @@ def _candidate(
     ppe_type: str,
     occurred_at: str,
 ) -> CandidateEvidence:
-    uses_missing_association = ppe_type == "vest"
-    return CandidateEvidence.model_validate(
-        {
-            "candidate_id": f"candidate-{case_id}",
-            "session_id": "session-demo-01",
-            "camera_id": camera_id,
-            "person_track_id": f"track-{case_id}",
-            "ppe_type": ppe_type,
-            "evidence_kind": (
-                "MISSING_POSITIVE_ASSOCIATION"
-                if uses_missing_association
-                else "NEGATIVE_CLASS_DETECTION"
-            ),
-            "confidence": 0.91,
-            "model_name": "ppe-yolo",
-            "weights_sha256": "a" * 64,
-            "aggregation_method": "weighted_mean",
-            "aggregation_parameters": {"minimum_frames": 3},
-            "occurred_at": occurred_at,
-            "first_seen_ms": 1_000,
-            "last_seen_ms": 2_000,
-            "frames": [
-                {
-                    "timestamp_ms": 1_500,
-                    "image_url": f"/evidence/{case_id}/key.jpg",
-                    "image_width": 1920,
-                    "image_height": 1080,
-                    "frame_role": "REPRESENTATIVE",
-                    "person_box": {
-                        "x1": 10,
-                        "y1": 20,
-                        "x2": 110,
-                        "y2": 220,
-                    },
-                    "observation_box": (
-                        None
-                        if uses_missing_association
-                        else {
-                            "x1": 30,
-                            "y1": 20,
-                            "x2": 80,
-                            "y2": 60,
-                        }
-                    ),
-                    "observation_confidence": (
-                        None if uses_missing_association else 0.93
-                    ),
-                }
-            ],
-        }
+    candidate = build_fixture_candidate(
+        camera_id,
+        "session-demo-01",
+        namespace="seed",
+        candidate_suffix=case_id,
+    )
+    if candidate is None or candidate.ppe_type.value != ppe_type:
+        raise ValueError(f"unsupported seed candidate for {camera_id} {ppe_type}")
+    return candidate.model_copy(
+        update={
+            "candidate_id": f"candidate-seed-{case_id}",
+            "person_track_id": f"track-seed-{case_id}",
+            "occurred_at": datetime.fromisoformat(occurred_at),
+        },
+        deep=True,
     )
 
 
@@ -93,169 +64,135 @@ def _confirmed_review(candidate: CandidateEvidence) -> VlmReviewResult:
     )
 
 
-def _investigation() -> InvestigationResult:
+def _resolved_investigation(
+    candidate: CandidateEvidence,
+    *,
+    recommendation: str | None,
+    responsible_party_id: str | None = None,
+    due_at: str | None = None,
+    citation: dict[str, str | None] | None = None,
+) -> InvestigationResult:
+    resolved = _RESOLVER.resolve(candidate, {})
+    rectification = None
+    if recommendation and responsible_party_id and due_at:
+        rectification = {
+            "responsible_party_id": responsible_party_id,
+            "due_at": due_at,
+            "reason": recommendation,
+        }
     return InvestigationResult.model_validate(
         {
-            "facts": {"task_code": "HOT_WORK_CUTTING"},
-            "conflicts": [],
-            "missing_fields": [],
-            "applicable_task": "HOT_WORK_CUTTING",
-            "hazards": ["飞溅", "强光"],
-            "required_ppe": ["goggles", "helmet"],
-            "recommendation": "确认责任主体与期限后进入整改",
-            "rectification_recommendation": {
-                "responsible_party_id": "team-electric-01",
-                "due_at": "2026-08-10T18:00:00+08:00",
-                "reason": "切割作业存在眼部伤害风险",
-            },
-            "citations": [
-                {
-                    "document_title": "个体防护装备配备规范",
-                    "standard_no": "GB 39800.12-2025",
-                    "section": "建筑作业防护",
-                    "source_url": "https://openstd.samr.gov.cn/example",
-                    "excerpt": "切割作业应根据危害配备眼部防护装备。",
-                }
-            ],
-            "tool_trace": [
-                "get_zone_at",
-                "find_active_work_permits",
-                "search_authoritative_requirements",
-            ],
+            "facts": resolved.facts,
+            "conflicts": resolved.conflicts,
+            "missing_fields": resolved.missing_fields,
+            "applicable_task": resolved.applicable_task,
+            "hazards": resolved.hazards,
+            "required_ppe": resolved.required_ppe,
+            "recommendation": recommendation,
+            "rectification_recommendation": rectification,
+            "citations": [citation] if citation else [],
+            "tool_trace": (
+                [
+                    "list_eligible_responsible_parties",
+                    "search_authoritative_requirements",
+                ]
+                if recommendation
+                else []
+            ),
         }
     )
 
 
-def _vehicle_vest_investigation() -> InvestigationResult:
-    return InvestigationResult.model_validate(
-        {
-            "facts": {"task_code": "VEHICLE_ZONE_OPERATION"},
-            "conflicts": [],
-            "missing_fields": [],
-            "applicable_task": "VEHICLE_ZONE_OPERATION",
-            "hazards": ["车辆碰撞"],
-            "required_ppe": ["vest"],
-            "recommendation": "车辆作业区人员应佩戴高可视背心",
-            "rectification_recommendation": {
-                "responsible_party_id": "team-logistics-01",
-                "due_at": "2026-08-08T10:00:00+08:00",
-                "reason": "车辆作业区需要提高人员可见性",
-            },
-            "citations": [
-                {
-                    "document_title": "建筑工人施工现场劳动保护基本配置指南",
-                    "section": "高可视警示服",
-                    "source_url": (
-                        "https://www.gov.cn/zhengce/zhengceku/"
-                        "2021-01/19/5580999/"
-                    ),
-                    "excerpt": "车辆作业区域应按风险配备高可视警示服。",
-                }
-            ],
-            "tool_trace": [
-                "get_zone_at",
-                "find_active_work_permits",
-                "get_task_ppe_matrix",
-                "search_authoritative_requirements",
-            ],
-        }
+def _cutting_helmet_investigation(
+    candidate: CandidateEvidence,
+) -> InvestigationResult:
+    return _resolved_investigation(
+        candidate,
+        recommendation="切割作业要求佩戴安全帽，确认责任主体与期限后进入整改",
+        responsible_party_id="team-electric-01",
+        due_at="2026-08-10T18:00:00+08:00",
+        citation={
+            "document_title": "个体防护装备配备规范 第12部分：建筑",
+            "standard_no": "GB 39800.12-2025",
+            "section": "建筑作业个体防护装备配备",
+            "source_url": (
+                "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?"
+                "hcno=225DB0D16D458885C1C984AB6AA44012"
+            ),
+            "excerpt": "应依据建筑作业危害配备适用的个体防护装备。",
+        },
     )
 
 
-def _missing_facts_investigation() -> InvestigationResult:
-    return InvestigationResult.model_validate(
-        {
-            "facts": {"camera_id": "CAM-01", "zone_type": "SCAFFOLD"},
-            "conflicts": [],
-            "missing_fields": ["active_work_permit", "actual_task_code"],
-            "applicable_task": None,
-            "hazards": ["高处作业"],
-            "required_ppe": [],
-            "recommendation": None,
-            "rectification_recommendation": None,
-            "citations": [],
-            "tool_trace": [
-                "get_zone_at",
-                "find_active_work_permits",
-            ],
-        }
+def _vehicle_vest_investigation(
+    candidate: CandidateEvidence,
+) -> InvestigationResult:
+    return _resolved_investigation(
+        candidate,
+        recommendation="车辆作业区人员应佩戴高可视背心",
+        responsible_party_id="team-logistics-01",
+        due_at="2026-08-08T10:00:00+08:00",
+        citation={
+            "document_title": "建筑工人施工现场劳动保护基本配置指南",
+            "standard_no": None,
+            "section": "高可视警示服",
+            "source_url": (
+                "https://www.gov.cn/zhengce/zhengceku/2021-01/19/"
+                "5580999/files/10d98ecac8cd4c68a887b0519b56768b.pdf"
+            ),
+            "excerpt": "车辆作业区域应按风险配备高可视警示服。",
+        },
     )
 
 
-def _rebar_gloves_investigation() -> InvestigationResult:
-    return InvestigationResult.model_validate(
-        {
-            "facts": {"task_code": "HANDLING_REBAR"},
-            "conflicts": [],
-            "missing_fields": [],
-            "applicable_task": "HANDLING_REBAR",
-            "hazards": ["手部伤害风险"],
-            "required_ppe": ["gloves"],
-            "recommendation": "钢筋搬运作业应按任务要求佩戴防护手套",
-            "rectification_recommendation": {
-                "responsible_party_id": "team-structure-01",
-                "due_at": "2026-08-08T18:00:00+08:00",
-                "reason": "钢筋搬运存在手部伤害风险",
-            },
-            "citations": [
-                {
-                    "document_title": "个体防护装备配备规范",
-                    "standard_no": "GB 39800.12-2025",
-                    "section": "手部防护",
-                    "source_url": "https://openstd.samr.gov.cn/example",
-                    "excerpt": "存在手部伤害风险时应配备适用的手部防护装备。",
-                }
-            ],
-            "tool_trace": [
-                "get_zone_at",
-                "find_active_work_permits",
-                "get_task_ppe_matrix",
-                "search_authoritative_requirements",
-            ],
-        }
+def _missing_facts_investigation(
+    candidate: CandidateEvidence,
+) -> InvestigationResult:
+    return _resolved_investigation(
+        candidate,
+        recommendation=None,
     )
 
 
-def _rotating_equipment_investigation() -> InvestigationResult:
-    return InvestigationResult.model_validate(
-        {
-            "facts": {"task_code": "ROTATING_EQUIPMENT_OPERATION"},
-            "conflicts": [],
-            "missing_fields": [],
-            "applicable_task": "ROTATING_EQUIPMENT_OPERATION",
-            "hazards": ["卷入风险"],
-            "required_ppe": ["helmet"],
-            "recommendation": "不应简单要求佩戴手套，应优先落实防卷入措施",
-            "rectification_recommendation": {
-                "responsible_party_id": "team-mechanical-01",
-                "due_at": "2026-08-10T18:00:00+08:00",
-                "reason": "旋转设备作业需控制卷入风险并复核 PPE 要求",
-            },
-            "citations": [
-                {
-                    "document_title": "建筑与市政施工现场安全卫生与职业健康通用规范",
-                    "standard_no": "GB 55034-2022",
-                    "section": "机械设备作业",
-                    "source_url": "https://policy.mofcom.gov.cn/example",
-                    "excerpt": "机械设备作业应采取防止人员卷入的安全措施。",
-                }
-            ],
-            "tool_trace": [
-                "get_zone_at",
-                "find_active_work_permits",
-                "get_task_ppe_matrix",
-                "search_authoritative_requirements",
-            ],
-        }
+def _rebar_gloves_investigation(
+    candidate: CandidateEvidence,
+) -> InvestigationResult:
+    return _resolved_investigation(
+        candidate,
+        recommendation="钢筋搬运作业应按任务要求佩戴防护手套",
+        responsible_party_id="team-structure-01",
+        due_at="2026-08-08T18:00:00+08:00",
+        citation={
+            "document_title": "个体防护装备配备规范 第12部分：建筑",
+            "standard_no": "GB 39800.12-2025",
+            "section": "手部防护",
+            "source_url": (
+                "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?"
+                "hcno=225DB0D16D458885C1C984AB6AA44012"
+            ),
+            "excerpt": "存在手部伤害风险时应配备适用的手部防护装备。",
+        },
     )
 
 
-def _recheck_evidence() -> RectificationEvidence:
-    return RectificationEvidence(
-        evidence_id="evidence-case-recheck-01",
-        image_url="/evidence/case-recheck-no-evidence/after.jpg",
-        captured_at="2026-08-07T11:04:00+08:00",
-        note="整改后的旋转设备作业现场",
+def _rotating_equipment_investigation(
+    candidate: CandidateEvidence,
+) -> InvestigationResult:
+    return _resolved_investigation(
+        candidate,
+        recommendation="不应简单要求佩戴手套，应优先落实防卷入措施",
+        responsible_party_id="team-mechanical-01",
+        due_at="2026-08-10T18:00:00+08:00",
+        citation={
+            "document_title": "建筑与市政施工现场安全卫生与职业健康通用规范",
+            "standard_no": "GB 55034-2022",
+            "section": "机械设备作业",
+            "source_url": (
+                "https://www.mohurd.gov.cn/gongkai/fdzdgknr/"
+                "zfhcxjsbwj/202211/20221117_768953.html"
+            ),
+            "excerpt": "机械设备作业应采取防止人员卷入的安全措施。",
+        },
     )
 
 
@@ -355,15 +292,15 @@ def demo_cases() -> list[CaseSnapshot]:
             "ppe_type": "helmet",
             "status": CaseStatus.NEEDS_HUMAN_FACTS,
             "occurred_at": "2026-08-07T09:30:00+08:00",
-            "investigation": _missing_facts_investigation(),
+            "investigation_factory": _missing_facts_investigation,
         },
         {
             "case_id": "case-01",
             "camera_id": "CAM-02",
-            "ppe_type": "goggles",
+            "ppe_type": "helmet",
             "status": CaseStatus.PENDING_REVIEW,
             "occurred_at": "2026-08-07T10:00:00+08:00",
-            "investigation": _investigation(),
+            "investigation_factory": _cutting_helmet_investigation,
         },
         {
             "case_id": "case-overdue-01",
@@ -373,19 +310,15 @@ def demo_cases() -> list[CaseSnapshot]:
             "occurred_at": "2026-08-07T10:30:00+08:00",
             "rectification_responsible_party_id": "team-structure-01",
             "rectification_due_at": "2026-08-08T18:00:00+08:00",
-            "investigation": _rebar_gloves_investigation(),
+            "investigation_factory": _rebar_gloves_investigation,
         },
         {
             "case_id": "case-recheck-no-evidence",
             "camera_id": "CAM-04",
             "ppe_type": "gloves",
-            "status": CaseStatus.RECHECK_PENDING,
+            "status": CaseStatus.PENDING_REVIEW,
             "occurred_at": "2026-08-07T11:00:00+08:00",
-            "rectification_responsible_party_id": "team-mechanical-01",
-            "rectification_due_at": "2026-08-10T18:00:00+08:00",
-            "rectification_description": "已完成防卷入整改并复核作业要求",
-            "rectification_evidence": [_recheck_evidence()],
-            "investigation": _rotating_equipment_investigation(),
+            "investigation_factory": _rotating_equipment_investigation,
         },
     ]
     cases = []
@@ -408,7 +341,7 @@ def demo_cases() -> list[CaseSnapshot]:
                 version=1 + len(transitions),
                 candidate=candidate,
                 vlm_review=_confirmed_review(candidate),
-                investigation=item.get("investigation"),
+                investigation=item["investigation_factory"](candidate),
                 rectification_responsible_party_id=item.get(
                     "rectification_responsible_party_id"
                 ),
@@ -451,7 +384,7 @@ def demo_cases() -> list[CaseSnapshot]:
             version=1 + len(closed_transitions),
             candidate=closed_candidate,
             vlm_review=_confirmed_review(closed_candidate),
-            investigation=_vehicle_vest_investigation(),
+            investigation=_vehicle_vest_investigation(closed_candidate),
             rectification_responsible_party_id="team-logistics-01",
             rectification_due_at="2026-08-08T10:00:00+08:00",
             rectification_evidence=[_closed_evidence()],
@@ -467,17 +400,6 @@ def demo_cases() -> list[CaseSnapshot]:
 
 def demo_submissions() -> list[RectificationEvidenceSubmissionRecord]:
     return [
-        RectificationEvidenceSubmissionRecord(
-            submission_id="submission-case-recheck-no-evidence-6",
-            case_id="case-recheck-no-evidence",
-            actor_id="officer-01",
-            actor_name="现场安全员",
-            actor_role="SITE_SAFETY_OFFICER",
-            reason="现场已完成整改",
-            created_at="2026-08-07T11:05:00+08:00",
-            description="已完成防卷入整改并复核作业要求",
-            evidence=[_recheck_evidence()],
-        ),
         RectificationEvidenceSubmissionRecord(
             submission_id="submission-case-closed-01-6",
             case_id="case-closed-01",

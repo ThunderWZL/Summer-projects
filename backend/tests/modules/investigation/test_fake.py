@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from app.contracts import Citation, PpeType
+from app.contracts import CaseSnapshot, CaseStatus, Citation, PpeType
+from app.domain.inmemory.case_store import InMemoryCaseStore
+from app.domain.inmemory.fake_investigation import FixtureInvestigation
+from app.domain.inmemory.fixture_candidates import build_fixture_candidate
 from app.domain.inmemory.site_context import MemorySiteContext
+from app.domain.resolver import DeterministicInvestigationResolver
 from app.domain.requirements_rag import RequirementQuery
 from app.modules.investigation.agent import AgentInvestigationContext
 from app.modules.investigation.fake import FixedInvestigationAgent
+from app.modules.investigation.service import InvestigationService
 from app.modules.investigation.tools import InvestigationTools
 
 
@@ -150,3 +155,88 @@ def test_fixed_agent_distinguishes_default_cam_03_and_cam_04_business_contexts()
     assert "应落实 gloves" in (cam03.recommendation or "")
     assert "gloves 不属于适用" in (cam04.recommendation or "")
     assert cam03.recommendation != cam04.recommendation
+
+
+def fixture_investigation(camera_id: str, *, human_facts: dict | None = None):
+    context = MemorySiteContext()
+    candidate = build_fixture_candidate(camera_id, f"session-{camera_id.lower()}")
+    assert candidate is not None
+    snapshot = CaseSnapshot(
+        case_id=f"case-{camera_id.lower()}",
+        session_id=candidate.session_id,
+        camera_id=candidate.camera_id,
+        person_track_id=candidate.person_track_id,
+        ppe_type=candidate.ppe_type,
+        status=CaseStatus.INVESTIGATING,
+        version=3,
+        candidate=candidate,
+        human_facts=human_facts or {},
+        created_at=candidate.occurred_at,
+        updated_at=candidate.occurred_at,
+    )
+    store = InMemoryCaseStore()
+    store.create(snapshot)
+    agent = FixedInvestigationAgent(
+        InvestigationTools(context, RecordingRetriever([make_citation()]))
+    )
+    delegate = InvestigationService(
+        store,
+        DeterministicInvestigationResolver(context),
+        agent,
+    )
+    return FixtureInvestigation(delegate, store), snapshot.case_id
+
+
+def test_cam02_without_site_note_only_withholds_agent_advice_and_citations() -> None:
+    port, case_id = fixture_investigation("CAM-02")
+
+    result = port.investigate(case_id)
+
+    assert result.facts["task_code"] == "HOT_WORK_CUTTING"
+    assert result.applicable_task == "HOT_WORK_CUTTING"
+    assert PpeType.HELMET in result.required_ppe
+    assert result.missing_fields == []
+    assert result.conflicts == []
+    assert result.recommendation is None
+    assert result.rectification_recommendation is None
+    assert result.citations == []
+
+
+def test_cam02_with_site_note_is_a_complete_investigation() -> None:
+    port, case_id = fixture_investigation(
+        "CAM-02", human_facts={"site_note": "切割作业正在进行"}
+    )
+
+    result = port.investigate(case_id)
+
+    assert result.missing_fields == []
+    assert result.conflicts == []
+    assert result.recommendation
+    assert result.rectification_recommendation is not None
+    assert result.citations == [make_citation()]
+
+
+def test_cam03_and_cam04_keep_the_resolver_ppe_applicability_distinct() -> None:
+    cam03, case03 = fixture_investigation("CAM-03")
+    cam04, case04 = fixture_investigation("CAM-04")
+
+    result03 = cam03.investigate(case03)
+    result04 = cam04.investigate(case04)
+
+    assert PpeType.GLOVES in result03.required_ppe
+    assert PpeType.GLOVES not in result04.required_ppe
+    assert result03.applicable_task == "HANDLING_REBAR"
+    assert result04.applicable_task == "ROTATING_EQUIPMENT_OPERATION"
+
+
+def test_cam01_missing_permit_cannot_be_fabricated_as_complete_by_the_fake() -> None:
+    port, case_id = fixture_investigation("CAM-01")
+
+    result = port.investigate(case_id)
+
+    assert result.missing_fields
+    assert result.applicable_task is None
+    assert result.required_ppe == []
+    assert result.recommendation is None
+    assert result.rectification_recommendation is None
+    assert result.citations == []
