@@ -65,16 +65,15 @@ export function CasesWorkspace() {
     <div className="case-workspace">
       <header className="case-workspace__bar">
         <button className="case-brand" type="button" onClick={() => navigateToCase(null)}>
-          <span className="case-brand__mark" aria-hidden="true" />
           <span>
             <strong>SitePPE</strong>
             <small>安全事件闭环</small>
           </span>
         </button>
         <div className="case-workspace__context">
-          <span className="case-workspace__live"><i /> 演示上下文</span>
+          <span className="case-workspace__environment"><i /> 演示环境</span>
           <label>
-            <span>当前操作角色</span>
+            <span>当前角色</span>
             <select
               value={selectedActorId}
               onChange={(event) => setSelectedActorId(event.target.value)}

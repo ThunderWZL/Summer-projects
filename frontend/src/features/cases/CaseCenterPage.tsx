@@ -4,6 +4,7 @@ import { CaseApiError, fetchCases } from "./api";
 import { formatDateTime, PPE_LABELS, STATUS_LABELS } from "./format";
 import type {
   CaseFilters,
+  CaseListItem,
   CaseListResponse,
   CaseStatus,
   DemoContext,
@@ -38,6 +39,13 @@ const ALL_STATUSES: CaseStatus[] = [
 ];
 
 const VERIFIED_PPE: PpeType[] = ["helmet", "gloves", "vest"];
+
+type RemovableFilterKey = Exclude<keyof CaseFilters, "page" | "page_size">;
+
+interface ActiveFilter {
+  key: RemovableFilterKey;
+  label: string;
+}
 
 function readFiltersFromUrl(): CaseFilters {
   if (typeof window === "undefined") return DEFAULT_FILTERS;
@@ -115,6 +123,30 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     [filters],
   );
 
+  const activeFilters = useMemo<ActiveFilter[]>(() => {
+    const items: ActiveFilter[] = [];
+    const zoneName = context?.zones.find((zone) => zone.zone_id === filters.zone_id)?.name;
+    const partyName = context?.responsible_parties.find(
+      (party) => party.party_id === filters.responsible_party_id,
+    )?.name;
+
+    if (filters.keyword) items.push({ key: "keyword", label: `关键词：${filters.keyword}` });
+    if (filters.status) items.push({ key: "status", label: STATUS_LABELS[filters.status] });
+    if (filters.ppe_type) items.push({ key: "ppe_type", label: PPE_LABELS[filters.ppe_type] });
+    if (filters.zone_id) items.push({ key: "zone_id", label: zoneName ?? filters.zone_id });
+    if (filters.responsible_party_id) {
+      items.push({ key: "responsible_party_id", label: partyName ?? filters.responsible_party_id });
+    }
+    if (filters.occurred_from) {
+      items.push({ key: "occurred_from", label: `起始：${filters.occurred_from}` });
+    }
+    if (filters.occurred_to) {
+      items.push({ key: "occurred_to", label: `截止：${filters.occurred_to}` });
+    }
+    if (filters.overdue_only) items.push({ key: "overdue_only", label: "仅看已逾期" });
+    return items;
+  }, [context, filters]);
+
   function updateFilter<K extends keyof CaseFilters>(key: K, value: CaseFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value, page: key === "page" ? Number(value) : 1 }));
   }
@@ -124,6 +156,20 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     updateFilter("keyword", draftKeyword.trim());
   }
 
+  function clearFilter(key: RemovableFilterKey) {
+    if (key === "keyword") setDraftKeyword("");
+    setFilters((current) => ({
+      ...current,
+      [key]: key === "overdue_only" ? false : "",
+      page: 1,
+    }));
+  }
+
+  function clearAllFilters() {
+    setDraftKeyword("");
+    setFilters(DEFAULT_FILTERS);
+  }
+
   const stats = response?.statistics;
   const pagination = response?.pagination;
 
@@ -131,32 +177,29 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     <main className="case-center" aria-labelledby="case-center-title">
       <section className="case-center__intro">
         <div>
-          <p className="case-kicker">EVENT OPERATIONS / 事件中心</p>
+          <p className="case-kicker">SAFETY INCIDENT TRIAGE</p>
           <h1 id="case-center-title">先处理需要人判断的事件</h1>
           <p className="case-center__lede">
-            从视觉候选追踪到整改关闭。紧急度、逾期与统计均以服务端结果为准。
+            AI 已完成初步筛选。请按当前队列顺序补充事实、完成审核或确认整改结果。
           </p>
         </div>
-        {stats?.top_repeat_risk ? (
-          <div className="repeat-signal" aria-label="区域高频风险">
-            <span>区域高频</span>
-            <strong>{stats.top_repeat_risk.zone_name}</strong>
-            <small>
-              {PPE_LABELS[stats.top_repeat_risk.ppe_type]} · {stats.top_repeat_risk.case_count} 起
-            </small>
-          </div>
-        ) : null}
       </section>
 
-      <section className="metric-rail" aria-label="事件统计">
-        <Metric label="未关闭" value={stats?.open_count} tone="gold" />
-        <Metric label="待补事实" value={stats?.needs_human_facts_count} />
-        <Metric label="待项目审核" value={stats?.pending_review_count} />
-        <Metric label="已逾期" value={stats?.overdue_count} tone="danger" />
-        <Metric
+      <section className="triage-summary" aria-label="队列摘要">
+        <SummaryStat label="待人工处理" value={stats?.open_count} />
+        <SummaryStat label="已逾期" value={stats?.overdue_count} tone="danger" />
+        <SummaryStat label="待补事实" value={stats?.needs_human_facts_count} />
+        <SummaryStat label="待项目审核" value={stats?.pending_review_count} />
+        <SummaryStat
           label="平均关闭"
           value={stats?.average_closure_minutes == null ? "—" : `${stats.average_closure_minutes} 分`}
         />
+        {stats?.top_repeat_risk ? (
+          <p className="triage-summary__risk">
+            高频区域 <strong>{stats.top_repeat_risk.zone_name}</strong>
+            <span>{PPE_LABELS[stats.top_repeat_risk.ppe_type]}</span>
+          </p>
+        ) : null}
       </section>
 
       <div className="case-center__layout">
@@ -167,15 +210,16 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
           </div>
 
           <form onSubmit={applyKeyword} className="case-search">
-            <label htmlFor="case-keyword">事件编号或关键词</label>
-            <div>
+            <label htmlFor="case-keyword">搜索</label>
+            <div className="case-search__control">
+              <i aria-hidden="true" />
               <input
                 id="case-keyword"
                 value={draftKeyword}
                 onChange={(event) => setDraftKeyword(event.target.value)}
-                placeholder="例如 CASE-02"
+                placeholder="事件编号或关键词"
               />
-              <button type="submit">查询</button>
+              <button className="case-visually-hidden" type="submit">搜索</button>
             </div>
           </form>
 
@@ -238,20 +282,18 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
             className="case-filter-reset"
             type="button"
             disabled={!activeFilterCount}
-            onClick={() => {
-              setDraftKeyword("");
-              setFilters(DEFAULT_FILTERS);
-            }}
+            onClick={clearAllFilters}
           >
             清除全部筛选
           </button>
         </aside>
 
         <section className="case-results" aria-live="polite">
-          <div className="case-results__heading">
+          <header className="case-results__heading">
             <div>
-              <h2>事件队列</h2>
-              <p>{pagination ? `共 ${pagination.total_items} 起，按后端队列顺序展示` : "正在读取事件总数"}</p>
+              <p className="case-results__kicker">HUMAN REVIEW QUEUE</p>
+              <h2>人工复核队列</h2>
+              <p>{pagination ? `共 ${pagination.total_items} 起事件` : "正在读取事件总数"}</p>
             </div>
             <label className="case-page-size">
               每页
@@ -264,9 +306,30 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
                 <option value={50}>50</option>
               </select>
             </label>
-          </div>
+          </header>
 
-          {loading && !response ? <CaseTableSkeleton /> : null}
+          {activeFilters.length ? (
+            <div className="case-filter-summary" aria-label="当前筛选条件">
+              <span>当前筛选</span>
+              <div>
+                {activeFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => clearFilter(filter.key)}
+                    aria-label={`移除筛选：${filter.label}`}
+                  >
+                    {filter.label}<b aria-hidden="true">×</b>
+                  </button>
+                ))}
+                <button className="case-filter-summary__clear" type="button" onClick={clearAllFilters}>
+                  清除全部
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {loading && !response ? <CaseQueueSkeleton /> : null}
 
           {error ? (
             <div className="case-state case-state--error" role="alert">
@@ -287,8 +350,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setDraftKeyword("");
-                  setFilters(DEFAULT_FILTERS);
+                  clearAllFilters();
                 }}
               >
                 查看全部事件
@@ -297,63 +359,50 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
           ) : null}
 
           {!error && response?.items.length ? (
-            <div className={`case-table-wrap${loading ? " is-refreshing" : ""}`}>
-              <table className="case-table">
-                <thead>
-                  <tr>
-                    <th>优先级</th>
-                    <th>事件 / PPE</th>
-                    <th>位置</th>
-                    <th>状态</th>
-                    <th>责任与期限</th>
-                    <th>发生时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {response.items.map((item) => (
-                    <tr
-                      key={item.case_id}
+            <ol className={`review-queue${loading ? " is-refreshing" : ""}`}>
+              {response.items.map((item, index) => (
+                <li key={item.case_id} className={item.overdue && index < 2 ? "is-priority" : undefined}>
+                  <article
+                      role="link"
                       tabIndex={0}
                       onClick={() => onOpenCase(item.case_id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") onOpenCase(item.case_id);
                       }}
                     >
-                      <td data-label="优先级">
-                        <span className={`urgency urgency--${item.urgency.toLowerCase()}`}>
-                          {item.urgency === "HIGH" ? "高" : item.urgency === "MEDIUM" ? "中" : "低"}
-                        </span>
-                        {item.overdue ? <span className="overdue-tag">逾期</span> : null}
-                      </td>
-                      <td data-label="事件 / PPE">
-                        <button className="case-id-link" type="button">
-                          {item.case_id}
-                        </button>
-                        <span className="case-table__secondary">{PPE_LABELS[item.ppe_type]}</span>
-                      </td>
-                      <td data-label="位置">
-                        <strong>{item.zone_name}</strong>
-                        <span className="case-table__secondary">{item.camera_name}</span>
-                      </td>
-                      <td data-label="状态">
-                        <span className={`status-text status-text--${item.status.toLowerCase()}`}>
-                          {STATUS_LABELS[item.status]}
-                        </span>
-                      </td>
-                      <td data-label="责任与期限">
-                        <strong>{item.responsible_party_name ?? "待确认"}</strong>
-                        <span className="case-table__secondary">
-                          {item.rectification_due_at ? formatDateTime(item.rectification_due_at) : "尚未设定期限"}
-                        </span>
-                      </td>
-                      <td data-label="发生时间">
-                        <time dateTime={item.occurred_at}>{formatDateTime(item.occurred_at)}</time>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    <div className="review-order">
+                      <strong>{String((filters.page - 1) * filters.page_size + index + 1).padStart(2, "0")}</strong>
+                      <span className={`urgency-label urgency-label--${item.urgency.toLowerCase()}`}>
+                        {item.urgency === "HIGH" ? "高风险" : item.urgency === "MEDIUM" ? "中风险" : "低风险"}
+                      </span>
+                    </div>
+                    <div className="review-identity">
+                      <h3>{getCaseTitle(item)}</h3>
+                      <p><span>{item.zone_name}</span><span>{PPE_LABELS[item.ppe_type]}</span></p>
+                      <code>{item.case_id.toUpperCase()}</code>
+                    </div>
+                    <div className="review-reason">
+                      <span>{item.status === "CLOSED" ? "处理结果" : "需要人工处理"}</span>
+                      <strong>{getReviewReason(item.status)}</strong>
+                    </div>
+                    <div className={`review-deadline${item.overdue ? " is-overdue" : ""}`}>
+                      <span>{item.rectification_due_at ? "整改期限" : "发生时间"}</span>
+                      <strong>
+                        {item.overdue
+                          ? formatOverdue(item.rectification_due_at)
+                          : formatDateTime(item.rectification_due_at ?? item.occurred_at)}
+                      </strong>
+                      <small>{item.responsible_party_name ?? "责任主体待确认"}</small>
+                    </div>
+                    <div className="review-next">
+                      <span>下一步</span>
+                      <strong>{STATUS_LABELS[item.status]}</strong>
+                    </div>
+                    <span className="review-arrow" aria-hidden="true">→</span>
+                  </article>
+                </li>
+              ))}
+            </ol>
           ) : null}
 
           {pagination && pagination.total_pages > 1 ? (
@@ -383,21 +432,53 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
   );
 }
 
-function Metric({
+function SummaryStat({
   label,
   value,
   tone = "default",
 }: {
   label: string;
   value: number | string | undefined;
-  tone?: "default" | "gold" | "danger";
+  tone?: "default" | "danger";
 }) {
   return (
-    <div className={`metric metric--${tone}`}>
+    <p className={`summary-stat summary-stat--${tone}`}>
       <span>{label}</span>
       <strong>{value ?? "—"}</strong>
-    </div>
+    </p>
   );
+}
+
+function getCaseTitle(item: CaseListItem): string {
+  return `${item.zone_name}作业人员未佩戴${PPE_LABELS[item.ppe_type]}`;
+}
+
+function formatOverdue(dueAt: string | null): string {
+  if (!dueAt) return "已逾期";
+  const due = new Date(dueAt).getTime();
+  if (!Number.isFinite(due)) return "已逾期";
+  const elapsedHours = Math.max(1, Math.floor((Date.now() - due) / 3_600_000));
+  if (elapsedHours < 24) return `已逾期 ${elapsedHours}h`;
+  const days = Math.floor(elapsedHours / 24);
+  const hours = elapsedHours % 24;
+  return `已逾期 ${days}d${hours ? ` ${hours}h` : ""}`;
+}
+
+function getReviewReason(status: CaseStatus): string {
+  const reasons: Record<CaseStatus, string> = {
+    YOLO_CANDIDATE: "等待语义复核",
+    VLM_REVIEWED: "确认复核结论",
+    VLM_REJECTED: "检查异常结果",
+    INVESTIGATING: "等待调查结论",
+    NEEDS_HUMAN_FACTS: "缺少现场事实",
+    REINVESTIGATE: "需要重新调查",
+    PENDING_REVIEW: "等待项目审核",
+    HUMAN_REJECTED: "处理人工驳回",
+    RECTIFICATION_OPEN: "跟进整改进度",
+    RECHECK_PENDING: "确认整改证据",
+    CLOSED: "处理已完成",
+  };
+  return reasons[status];
 }
 
 function FilterSelect({
@@ -426,10 +507,10 @@ function FilterSelect({
   );
 }
 
-function CaseTableSkeleton() {
+function CaseQueueSkeleton() {
   return (
-    <div className="case-skeleton" aria-label="正在加载事件">
-      {Array.from({ length: 5 }, (_, index) => (
+    <div className="queue-skeleton" aria-label="正在加载事件">
+      {Array.from({ length: 7 }, (_, index) => (
         <div key={index} />
       ))}
     </div>
