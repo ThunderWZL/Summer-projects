@@ -341,3 +341,25 @@
 ### 后续计划
 
 * 推送 `feat/analysis-sessions` 任务分支，交由项目负责人验收；真实视频推理接线等待对应模块交付。
+
+## 2026-08-15
+
+### 当日目标
+
+* 完成切片七六路实时监控台、分析通道切换、实时事件计数和连接失败重试，并验证前后端共享契约。
+
+### 开发记录
+
+* 00:53 `feat(frontend): 实现六路实时监控台`
+  * 完成：实现响应式 2×3 视频墙、六路预览、单活动分析会话、换路确认、MJPEG 标注画面、角色切换及显式断线重试。
+  * 实现：封装演示目录与会话 REST、严格校验并按 sequence 去重 WebSocket 事件；候选数仅采用 `SESSION_PROGRESS` 和 `SESSION_FINISHED` 权威计数；状态机隔离过期会话事件，并处理 StrictMode 加载、重复启动和终态连接释放。
+  * 验证：`cd frontend && npm run test`，7 个测试文件共 33 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_demo_api.py tests/api/test_analysis_sessions.py`，11 项通过；`git diff --check`，通过；前端未配置 lint，未运行。
+
+### 问题与处理
+
+* 回归测试发现 StrictMode 首次加载失效、首次启动失败无提示、重复 POST 和会话终态未关闭 WebSocket；已修复并增加对应行为测试。
+* `npm audit` 报告 3 个既有开发依赖链 high 漏洞，来自 `js-yaml 4.3.0` 和 `nanoid 3.3.17`；`npm audit --omit=dev` 确认生产依赖 0 个漏洞，本切片未越界升级既有依赖。
+
+### 后续计划
+
+* 推送 `feat/monitor-console` 任务分支，交由项目负责人进行浏览器联调验收。
