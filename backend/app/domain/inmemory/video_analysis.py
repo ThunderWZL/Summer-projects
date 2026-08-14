@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 
-from app.contracts import AnalysisStage, CandidateCreatedPayload, PpeType
+from app.contracts import AnalysisStage, CandidateCreatedPayload
 from app.domain.case_store import CaseQuery, CaseStorePort
 from app.domain.site_context import SiteContextPort
 from app.domain.video_analysis import AnalysisSession
+from app.modules.video_analysis.observation import SUPPORTED_PPE
 from app.services.session_manager import SessionManager
 
 
@@ -17,7 +18,6 @@ _JPEG = (
     + b"\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08"
     + b"\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\x00\xff\xd9"
 )
-_ENABLED_PPE_TYPES = frozenset({PpeType.HELMET, PpeType.GLOVES, PpeType.VEST})
 
 
 class InMemoryVideoAnalysis:
@@ -63,7 +63,7 @@ class InMemoryVideoAnalysis:
                 item
                 for item in self._cases.list(CaseQuery(page_size=1_000_000)).items
                 if item.camera_id == video.camera_id
-                and item.ppe_type in _ENABLED_PPE_TYPES
+                and item.ppe_type in SUPPORTED_PPE
             ),
             None,
         )

@@ -25,6 +25,13 @@ class AnalysisSessionNotFound(VideoAnalysisError):
         super().__init__(f"analysis session {session_id} was not found")
 
 
+class AnalysisSessionNotActive(VideoAnalysisError):
+    code = "ANALYSIS_SESSION_NOT_ACTIVE"
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(f"analysis session {session_id} is not active")
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisSession:
     session_id: str

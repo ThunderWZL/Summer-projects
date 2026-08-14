@@ -314,11 +314,17 @@
   * 实现：EventHub 按会话递增 sequence 并实时扇出；会话编排映射 `VlmProcessingFailed`；确定性假实现只引用已有 Case，且仅演示 `helmet/gloves/vest` 候选；断开 WebSocket 时主动清理订阅。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，22 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，202 项通过、1 项跳过；后端全量测试在既有 `tests/api/test_cases_api.py` 处无输出阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响；`git diff --check`，通过。
 
+* 20:51 `fix(analysis-session): 串行化换路并阻止停止后取流`
+  * 完成：并发切换请求严格串行，旧 runner 完成清理后才启动下一路；停止或自然结束的会话不再创建新 MJPEG 流。
+  * 实现：会话生命周期增加异步互斥并复用内部停止路径；非活动流返回稳定的 `ANALYSIS_SESSION_NOT_ACTIVE` 冲突响应；假实现复用视觉模块的三类 PPE 支持集合。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，25 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，204 项通过、1 项跳过；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
 * 后端全量套件在既有 API 测试发生环境性阻塞；中断后用主工作区单测复现，确认并非本任务分支引入。
 * 切片六测试发现运行时类型别名导入失败、同步依赖挂起、WebSocket 断开不清理、runner 技术异常未映射、停止返回早于资源释放及未启用 PPE 被演示；均已补回归测试并修复。
+* 双轴复审发现并发换路可产生重叠 runner、停止后仍可重新取流；已增加生命周期互斥、活动状态校验和回归测试。
 
 ### 后续计划
 
