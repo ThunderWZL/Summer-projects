@@ -127,3 +127,20 @@ def test_unknown_mjpeg_session_returns_error_response_instead_of_a_stream() -> N
 
     assert response.status_code == 404
     assert response.json()["code"] == "ANALYSIS_SESSION_NOT_FOUND"
+
+
+def test_stopped_session_mjpeg_returns_conflict_instead_of_a_stream() -> None:
+    async def scenario():
+        start = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-01"}
+        )
+        session_id = start.json()["session_id"]
+        await request("POST", f"/api/v1/analysis-sessions/{session_id}/stop")
+        return await request(
+            "GET", f"/api/v1/analysis-sessions/{session_id}/stream.mjpg"
+        )
+
+    response = asyncio.run(scenario())
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "ANALYSIS_SESSION_NOT_ACTIVE"

@@ -8,6 +8,7 @@ from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases
 from app.domain.video_analysis import (
     AnalysisSession,
+    AnalysisSessionNotActive,
     AnalysisSessionNotFound,
     AnalysisVideoNotFound,
 )
@@ -115,6 +116,69 @@ def test_stop_waits_for_the_session_runner_to_release_resources() -> None:
         return released.is_set()
 
     assert asyncio.run(scenario()) is True
+
+
+def test_concurrent_switches_never_overlap_session_runners() -> None:
+    async def scenario() -> int:
+        running = 0
+        maximum_running = 0
+        first_started = asyncio.Event()
+        first_releasing = asyncio.Event()
+        allow_first_release = asyncio.Event()
+
+        async def stream(_session_id: str):
+            yield b"frame"
+
+        async def run(session: AnalysisSession, _manager: SessionManager) -> None:
+            nonlocal running, maximum_running
+            running += 1
+            maximum_running = max(maximum_running, running)
+            if session.video_id == "video-01":
+                first_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                if session.video_id == "video-01":
+                    first_releasing.set()
+                    await allow_first_release.wait()
+                running -= 1
+
+        manager = SessionManager(
+            EventHub(),
+            lambda video_id: object()
+            if video_id in {"video-01", "video-02", "video-03"}
+            else None,
+            stream,
+            run,
+        )
+        first = await manager.start_session("video-01")
+        await first_started.wait()
+        left_switch = asyncio.create_task(manager.start_session("video-02"))
+        await first_releasing.wait()
+        right_switch = asyncio.create_task(manager.start_session("video-03"))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        allow_first_release.set()
+        left, right = await asyncio.gather(left_switch, right_switch)
+        await asyncio.sleep(0)
+        await manager.stop_session(first.session_id)
+        await manager.stop_session(left.session_id)
+        await manager.stop_session(right.session_id)
+        return maximum_running
+
+    assert asyncio.run(scenario()) == 1
+
+
+def test_stopped_session_cannot_open_a_new_stream() -> None:
+    async def scenario() -> None:
+        manager = _manager()
+        session = await manager.start_session("video-01")
+        await manager.stop_session(session.session_id)
+        with pytest.raises(AnalysisSessionNotActive) as error:
+            manager.get_stream(session.session_id)
+        assert error.value.code == "ANALYSIS_SESSION_NOT_ACTIVE"
+
+    asyncio.run(scenario())
 
 
 def test_progress_events_report_the_public_session_stage() -> None:

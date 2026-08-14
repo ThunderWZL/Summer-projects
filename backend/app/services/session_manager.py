@@ -17,6 +17,7 @@ from app.contracts import (
 )
 from app.domain.video_analysis import (
     AnalysisSession,
+    AnalysisSessionNotActive,
     AnalysisSessionNotFound,
     AnalysisVideoNotFound,
     VideoAnalysisPort,
@@ -45,25 +46,29 @@ class SessionManager(VideoAnalysisPort):
         self._sessions: dict[str, AnalysisSession] = {}
         self._active_session_id: str | None = None
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start_session(self, video_id: str) -> AnalysisSession:
-        if self._get_video(video_id) is None:
-            raise AnalysisVideoNotFound(video_id)
-        if self._active_session_id is not None:
-            await self.stop_session(self._active_session_id)
-        session = AnalysisSession(
-            session_id=f"analysis-session-{uuid4().hex}",
-            video_id=video_id,
-            stage=AnalysisStage.STARTING,
-        )
-        self._sessions[session.session_id] = session
-        self._active_session_id = session.session_id
-        task = asyncio.create_task(self._execute(session))
-        self._tasks[session.session_id] = task
-        return session
+        async with self._lifecycle_lock:
+            if self._get_video(video_id) is None:
+                raise AnalysisVideoNotFound(video_id)
+            if self._active_session_id is not None:
+                await self._stop_session(self._active_session_id)
+            session = AnalysisSession(
+                session_id=f"analysis-session-{uuid4().hex}",
+                video_id=video_id,
+                stage=AnalysisStage.STARTING,
+            )
+            self._sessions[session.session_id] = session
+            self._active_session_id = session.session_id
+            task = asyncio.create_task(self._execute(session))
+            self._tasks[session.session_id] = task
+            return session
 
     def get_stream(self, session_id: str) -> AsyncIterator[bytes]:
         self._require_session(session_id)
+        if self._active_session_id != session_id:
+            raise AnalysisSessionNotActive(session_id)
         return self._get_stream(session_id)
 
     def subscribe_events(self, session_id: str) -> AsyncIterator[AnalysisEvent]:
@@ -71,13 +76,16 @@ class SessionManager(VideoAnalysisPort):
         return self._event_hub.subscribe(session_id)
 
     async def stop_session(self, session_id: str) -> AnalysisSession:
+        async with self._lifecycle_lock:
+            return await self._stop_session(session_id)
+
+    async def _stop_session(self, session_id: str) -> AnalysisSession:
         session = self._require_session(session_id)
         if session.stage is AnalysisStage.STOPPING:
             return session
         stopped = replace(session, stage=AnalysisStage.STOPPING)
         self._sessions[session_id] = stopped
-        if self._active_session_id == session_id:
-            self._active_session_id = None
+        self._clear_active_session(session_id)
         await self.publish_progress(
             session_id,
             stage=AnalysisStage.STOPPING,
@@ -145,8 +153,7 @@ class SessionManager(VideoAnalysisPort):
                 candidate_count=candidate_count, case_count=case_count
             ),
         )
-        if self._active_session_id == session_id:
-            self._active_session_id = None
+        self._clear_active_session(session_id)
         return event
 
     async def handle_vlm_processing_failed(
@@ -162,8 +169,7 @@ class SessionManager(VideoAnalysisPort):
                 retryable=error.retryable,
             ),
         )
-        if self._active_session_id == session_id:
-            self._active_session_id = None
+        self._clear_active_session(session_id)
         return event
 
     async def _execute(self, session: AnalysisSession) -> None:
@@ -183,3 +189,7 @@ class SessionManager(VideoAnalysisPort):
     def _update_stage(self, session_id: str, stage: AnalysisStage) -> None:
         session = self._require_session(session_id)
         self._sessions[session_id] = replace(session, stage=stage)
+
+    def _clear_active_session(self, session_id: str) -> None:
+        if self._active_session_id == session_id:
+            self._active_session_id = None

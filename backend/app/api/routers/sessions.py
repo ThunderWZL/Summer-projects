@@ -6,6 +6,7 @@ from app.api.errors import error_response
 from app.api.schemas import AnalysisSessionResponse, StartAnalysisSessionRequest
 from app.domain.video_analysis import (
     AnalysisSession,
+    AnalysisSessionNotActive,
     AnalysisSessionNotFound,
     AnalysisVideoNotFound,
     VideoAnalysisPort,
@@ -60,3 +61,5 @@ async def analysis_stream(
         )
     except AnalysisSessionNotFound as error:
         return error_response(404, error.code, str(error))
+    except AnalysisSessionNotActive as error:
+        return error_response(409, error.code, str(error))
