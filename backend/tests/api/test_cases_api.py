@@ -348,7 +348,7 @@ def test_review_rejects_ineligible_responsible_party_without_changing_case() -> 
         reinvestigation.status_code,
         reinvestigation.json()["snapshot"]["status"],
         reinvestigation.json()["version"],
-    ) == (200, "NEEDS_HUMAN_FACTS", 7)
+    ) == (200, "PENDING_REVIEW", 7)
 
 
 def test_closed_vehicle_case_investigation_matches_its_vest_candidate() -> None:

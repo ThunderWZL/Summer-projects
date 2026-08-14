@@ -184,10 +184,10 @@ def fixture_investigation(camera_id: str, *, human_facts: dict | None = None):
         DeterministicInvestigationResolver(context),
         agent,
     )
-    return FixtureInvestigation(delegate, store), snapshot.case_id
+    return FixtureInvestigation(delegate), snapshot.case_id
 
 
-def test_cam02_without_site_note_only_withholds_agent_advice_and_citations() -> None:
+def test_cam02_is_complete_from_its_frozen_permit_context() -> None:
     port, case_id = fixture_investigation("CAM-02")
 
     result = port.investigate(case_id)
@@ -197,12 +197,12 @@ def test_cam02_without_site_note_only_withholds_agent_advice_and_citations() -> 
     assert PpeType.HELMET in result.required_ppe
     assert result.missing_fields == []
     assert result.conflicts == []
-    assert result.recommendation is None
-    assert result.rectification_recommendation is None
-    assert result.citations == []
+    assert result.recommendation
+    assert result.rectification_recommendation is not None
+    assert result.citations == [make_citation()]
 
 
-def test_cam02_with_site_note_is_a_complete_investigation() -> None:
+def test_non_whitelisted_site_note_does_not_change_cam02_resolution() -> None:
     port, case_id = fixture_investigation(
         "CAM-02", human_facts={"site_note": "切割作业正在进行"}
     )

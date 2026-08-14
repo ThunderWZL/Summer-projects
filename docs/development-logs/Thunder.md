@@ -363,15 +363,21 @@
 
 * 02:12 `feat(frontend): 串联监控与案件闭环`
   * 完成：在统一应用壳内串联监控台、案件列表和案件详情，并由顶层统一维护演示角色和案件路由。
-  * 实现：采用 Hash 路由保持静态部署兼容，监控与案件工作区常驻挂载以保留分析状态；复用共享 API 类型和演示上下文，移除重复导航、角色选择与请求实现。
+  * 实现：采用 Hash 路由保持静态部署兼容，监控与案件工作区常驻挂载以保留分析状态；复用共享 API 类型和演示上下文，移除重复导航、角色选择与演示上下文请求实现。
   * 验证：`cd frontend && npm run test`，9 个测试文件共 42 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json src/App.tsx src/styles.css src/features/cases/CasesWorkspace.tsx src/features/cases/case-center.css src/features/review/case-detail.css`，无前端反模式发现；`git diff --check`，通过；前端未配置 lint，未运行。
+
+* 02:22 `fix(integration): 对齐切片八冻结契约`
+  * 完成：修正 CAM-02 六路语义，补发 VLM 与 Case 状态实时事件，并用独立事实上下文验证版本 1 至 10 的完整关闭链路。
+  * 实现：移除非白名单 `site_note` 特判；按实际迁移发布 `VLM_REVIEWED` 和 `CASE_UPDATED` 摘要；更新 OpenAPI 生成类型及前端测试命令说明。
+  * 验证：`cd backend && PYTHONPATH=/tmp/siteppe-case-pipeline/backend /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，313 项通过、1 项跳过；`cd frontend && npm run generate:contracts`，生成成功；`cd frontend && npm run test`，9 个测试文件共 42 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`git diff --check`，通过；前后端均未配置 lint，未运行。
 
 ### 问题与处理
 
 * 回归测试发现 StrictMode 首次加载失效、首次启动失败无提示、重复 POST 和会话终态未关闭 WebSocket；已修复并增加对应行为测试。
 * `npm audit` 报告 3 个既有开发依赖链 high 漏洞，来自 `js-yaml 4.3.0` 和 `nanoid 3.3.17`；`npm audit --omit=dev` 确认生产依赖 0 个漏洞，本切片未越界升级既有依赖。
 * 切片八首轮回归发现 `VLM_REJECTED` 被计入高频风险、CAM-04 遗留整改提交、离线调查缺少引用导致 CAM-02 无法闭环；已分别修正统计口径、夹具状态和离线权威引用，并补充回归测试。
+* 双轴审查发现 CAM-02 被错误强制进入补事实状态、流水线未发送状态事件、OpenAPI 类型未生成和项目命令说明过期；已逐项修正。首次契约生成因沙箱禁止访问本机端口失败，授权本机访问后同一命令成功。
 
 ### 后续计划
 
-* 对 `feat/case-pipeline` 执行规范与契约双轴代码审查，根据审查结果完成必要修正并交由项目负责人验收。
+* 推送审查修正后的 `feat/case-pipeline`，交由项目负责人进行集成验收。

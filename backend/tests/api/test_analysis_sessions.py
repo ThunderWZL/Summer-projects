@@ -194,11 +194,29 @@ def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
             event for event in received if event.event_type.value == "CANDIDATE_CREATED"
         )
         detail = await request("GET", f"/api/v1/cases/{created.case_id}")
-        return created, received[-1], detail
+        return created, received, detail
 
-    created, finished, detail = asyncio.run(scenario())
+    created, received, detail = asyncio.run(scenario())
+    finished = received[-1]
 
     assert created.case_id
+    assert [event.event_type.value for event in received] == [
+        "SESSION_PROGRESS",
+        "SESSION_PROGRESS",
+        "SESSION_PROGRESS",
+        "CANDIDATE_CREATED",
+        "VLM_REVIEWED",
+        "CASE_UPDATED",
+        "CASE_UPDATED",
+        "SESSION_FINISHED",
+    ]
+    assert received[4].payload.status == "VLM_REVIEWED"
+    assert received[4].payload.version == 2
+    assert [event.payload.status for event in received[5:7]] == [
+        "INVESTIGATING",
+        "PENDING_REVIEW",
+    ]
+    assert [event.payload.version for event in received[5:7]] == [3, 4]
     assert (finished.payload.candidate_count, finished.payload.case_count) == (1, 1)
     assert detail.status_code == 200
     assert detail.json()["snapshot"]["case_id"] == created.case_id

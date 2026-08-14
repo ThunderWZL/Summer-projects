@@ -6,18 +6,91 @@ from datetime import datetime
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
+    build_case_workflow,
     get_case_pipeline,
     get_case_store,
+    get_case_workflow,
     get_clock,
     get_event_hub,
     get_inmemory_video_analysis,
     get_investigation_port,
+    get_site_context,
     get_session_manager,
+    get_user_directory,
 )
+from app.contracts import Citation, InvestigationResult
+from app.domain.case_workflow import CaseWorkflow
+from app.domain.inmemory.case_store import InMemoryCaseStore
+from app.domain.inmemory.fixture_candidates import build_fixture_candidate
 from app.main import app
+from app.modules.vlm_review.adapters.fixed import FixedVlmAdapter
+from app.modules.vlm_review.service import VlmReviewService
+from app.services.case_pipeline import CasePipeline
 
 
 NOW = datetime.fromisoformat("2026-08-15T10:00:00+08:00")
+
+
+class FactsCompletingInvestigation:
+    """Independent integration fixture for the human-facts workflow branch."""
+
+    def __init__(self, store: InMemoryCaseStore) -> None:
+        self._store = store
+
+    def investigate(self, case_id: str) -> InvestigationResult:
+        snapshot = self._store.get(case_id)
+        assert snapshot is not None
+        complete = snapshot.human_facts.get("task_code") == "SCAFFOLD_INSPECTION"
+        return InvestigationResult(
+            facts={"task_code": "SCAFFOLD_INSPECTION"} if complete else {},
+            conflicts=[],
+            missing_fields=[] if complete else ["task_code"],
+            applicable_task="SCAFFOLD_INSPECTION" if complete else None,
+            hazards=["高处坠落"] if complete else [],
+            required_ppe=["helmet"] if complete else [],
+            recommendation="脚手架巡检应佩戴安全帽" if complete else None,
+            rectification_recommendation=None,
+            citations=(
+                [
+                    Citation(
+                        document_title="测试上下文安全要求",
+                        section="脚手架巡检",
+                        source_url="https://example.test/scaffold",
+                        excerpt="脚手架巡检应按风险佩戴安全帽。",
+                    )
+                ]
+                if complete
+                else []
+            ),
+            tool_trace=["search_authoritative_requirements"] if complete else [],
+        )
+
+
+def facts_workflow_fixture() -> tuple[CasePipeline, InMemoryCaseStore, CaseWorkflow]:
+    store = InMemoryCaseStore()
+    workflow = build_case_workflow(
+        store,
+        get_user_directory(),
+        get_site_context(),
+        lambda: NOW,
+    )
+    vlm = VlmReviewService(
+        store,
+        FixedVlmAdapter(),
+        workflow,
+        model_provider="fixture",
+        model_parameters={"temperature": 0},
+        clock=lambda: NOW,
+        max_retries=0,
+        retry_delay_seconds=0,
+    )
+    pipeline = CasePipeline(
+        store,
+        workflow,
+        vlm,
+        FactsCompletingInvestigation(store),
+    )
+    return pipeline, store, workflow
 
 
 def setup_function() -> None:
@@ -61,67 +134,79 @@ async def analyze(video_id: str):
     return received
 
 
-def test_cam02_closes_through_the_public_commands_with_versions_one_to_ten() -> None:
+def test_independent_facts_context_closes_through_public_commands_v1_to_v10() -> None:
     async def scenario():
-        events = await analyze("video-02")
-        created = next(event for event in events if event.event_type.value == "CANDIDATE_CREATED")
-        case_id = created.case_id
-        assert case_id is not None
-        initial = await request("GET", f"/api/v1/cases/{case_id}")
-        facts = await request(
-            "POST",
-            f"/api/v1/cases/{case_id}/facts",
-            {
-                "command_type": "SUBMIT_FACTS",
-                "actor_id": "officer-01",
-                "expected_version": 4,
-                "reason": "确认切割作业现场信息",
-                "facts": {"site_note": "切割作业正在进行，许可与现场一致"},
-            },
+        pipeline, store, workflow = facts_workflow_fixture()
+        candidate = build_fixture_candidate(
+            "CAM-01",
+            "session-facts-workflow",
+            namespace="integration",
         )
-        review = await request(
-            "POST",
-            f"/api/v1/cases/{case_id}/review",
-            {
-                "command_type": "APPROVE_RECTIFICATION",
-                "actor_id": "reviewer-01",
-                "expected_version": 7,
-                "reason": "安全帽要求适用，批准整改",
-                "responsible_party_id": "team-electric-01",
-                "rectification_due_at": "2026-09-01T18:00:00+08:00",
-            },
-        )
-        evidence = await request(
-            "POST",
-            f"/api/v1/cases/{case_id}/rectification-evidence",
-            {
-                "command_type": "SUBMIT_RECTIFICATION_EVIDENCE",
-                "actor_id": "officer-01",
-                "expected_version": 8,
-                "reason": "现场已完成整改",
-                "description": "人员已正确佩戴安全帽",
-                "evidence": [
-                    {
-                        "evidence_id": "evidence-cam02-after",
-                        "image_url": "/evidence/cam02/after.jpg",
-                        "captured_at": "2026-08-15T11:00:00+08:00",
-                    }
-                ],
-            },
-        )
-        closed = await request(
-            "POST",
-            f"/api/v1/cases/{case_id}/recheck",
-            {
-                "command_type": "APPROVE_CLOSURE",
-                "actor_id": "reviewer-01",
-                "expected_version": 9,
-                "reason": "整改证据完整",
-                "recheck_conclusion": "复查通过，事件关闭",
-            },
-        )
-        detail = await request("GET", f"/api/v1/cases/{case_id}")
-        return initial, facts, review, evidence, closed, detail
+        assert candidate is not None
+        initial_snapshot = await pipeline.process_candidate(candidate)
+        app.dependency_overrides[get_case_store] = lambda: store
+        app.dependency_overrides[get_case_pipeline] = lambda: pipeline
+        app.dependency_overrides[get_case_workflow] = lambda: workflow
+        try:
+            case_id = initial_snapshot.case_id
+            initial = await request("GET", f"/api/v1/cases/{case_id}")
+            facts = await request(
+                "POST",
+                f"/api/v1/cases/{case_id}/facts",
+                {
+                    "command_type": "SUBMIT_FACTS",
+                    "actor_id": "officer-01",
+                    "expected_version": 4,
+                    "reason": "确认脚手架巡检任务",
+                    "facts": {"task_code": "SCAFFOLD_INSPECTION"},
+                },
+            )
+            review = await request(
+                "POST",
+                f"/api/v1/cases/{case_id}/review",
+                {
+                    "command_type": "APPROVE_RECTIFICATION",
+                    "actor_id": "reviewer-01",
+                    "expected_version": 7,
+                    "reason": "安全帽要求适用，批准整改",
+                    "responsible_party_id": "team-scaffold-01",
+                    "rectification_due_at": "2026-09-01T18:00:00+08:00",
+                },
+            )
+            evidence = await request(
+                "POST",
+                f"/api/v1/cases/{case_id}/rectification-evidence",
+                {
+                    "command_type": "SUBMIT_RECTIFICATION_EVIDENCE",
+                    "actor_id": "officer-01",
+                    "expected_version": 8,
+                    "reason": "现场已完成整改",
+                    "description": "人员已正确佩戴安全帽",
+                    "evidence": [
+                        {
+                            "evidence_id": "evidence-facts-after",
+                            "image_url": "/evidence/integration/after.jpg",
+                            "captured_at": "2026-08-15T11:00:00+08:00",
+                        }
+                    ],
+                },
+            )
+            closed = await request(
+                "POST",
+                f"/api/v1/cases/{case_id}/recheck",
+                {
+                    "command_type": "APPROVE_CLOSURE",
+                    "actor_id": "reviewer-01",
+                    "expected_version": 9,
+                    "reason": "整改证据完整",
+                    "recheck_conclusion": "复查通过，事件关闭",
+                },
+            )
+            detail = await request("GET", f"/api/v1/cases/{case_id}")
+            return initial, facts, review, evidence, closed, detail
+        finally:
+            for dependency in (get_case_store, get_case_pipeline, get_case_workflow):
+                app.dependency_overrides.pop(dependency, None)
 
     initial, facts, review, evidence, closed, detail_response = asyncio.run(scenario())
 
@@ -165,7 +250,7 @@ def test_cam02_closes_through_the_public_commands_with_versions_one_to_ten() -> 
         "RECTIFICATION_EVIDENCE",
     ]
     assert detail["human_submissions"][0]["facts"] == {
-        "site_note": "切割作业正在进行，许可与现场一致"
+        "task_code": "SCAFFOLD_INSPECTION"
     }
 
 
@@ -189,6 +274,7 @@ def test_six_demo_channels_expose_the_frozen_explainable_outcomes() -> None:
 
     assert details[1]["snapshot"]["status"] == "NEEDS_HUMAN_FACTS"
     assert details[1]["snapshot"]["investigation"]["missing_fields"]
+    assert details[2]["snapshot"]["status"] == "PENDING_REVIEW"
     assert details[2]["snapshot"]["candidate"]["last_seen_ms"] - details[2]["snapshot"]["candidate"]["first_seen_ms"] == 1000
     assert len(details[2]["snapshot"]["candidate"]["frames"]) == 3
     assert "gloves" in details[3]["snapshot"]["investigation"]["required_ppe"]
