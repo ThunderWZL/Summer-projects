@@ -1,6 +1,6 @@
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from app.contracts import Citation
+from app.contracts import AnalysisStage, Citation
 from app.domain.site_context import (
     CameraInfo,
     DemoUser,
@@ -40,3 +40,15 @@ class RequirementSearchResponse(ApiModel):
     query: str
     top_k: int = Field(ge=1)
     citations: list[Citation]
+
+
+class StartAnalysisSessionRequest(ApiModel):
+    video_id: str = Field(min_length=1)
+
+
+class AnalysisSessionResponse(ApiModel):
+    session_id: str
+    video_id: str
+    stage: AnalysisStage
+    stream_url: str
+    events_url: str

@@ -304,11 +304,40 @@
   * 实现：依据 DeepSeek 与 LangChain 最新官方文档绑定工具 schema、透传 `tool_call_id`、显式使用官方 API 地址，并通过 `extra_body` 关闭思考模式；提示词冻结 resolver 事实并声明最终 JSON 字段。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/ tests/modules/investigation/ -q`，116 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest -ra`，在首个既有 API 用例长时间无输出，且主工作区可独立复现同一阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响。
 
+* 20:51 `feat(video-analysis): 定义视频分析会话端口`
+  * 完成：冻结分析会话值对象及开始、停止、画面流和事件订阅四个端口方法。
+  * 实现：端口复用共享 `AnalysisStage` 与 `AnalysisEvent` 契约，并提供稳定的视频和会话不存在领域错误。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py::test_analysis_session_and_port_expose_the_frozen_contract -q`，1 项通过；`git diff --check`，通过。
+
+* 20:51 `feat(analysis-session): 实现单路分析与实时事件`
+  * 完成：提供分析会话启动/幂等停止 REST、有限 MJPEG 占位流和 WebSocket 实时事件，并在换路时等待旧 runner 完成资源释放。
+  * 实现：EventHub 按会话递增 sequence 并实时扇出；会话编排映射 `VlmProcessingFailed`；确定性假实现只引用已有 Case，且仅演示 `helmet/gloves/vest` 候选；断开 WebSocket 时主动清理订阅。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，22 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，202 项通过、1 项跳过；后端全量测试在既有 `tests/api/test_cases_api.py` 处无输出阻塞，未记为通过；后端未配置 lint 和类型检查，前端与 ML 未受影响；`git diff --check`，通过。
+
+* 20:51 `fix(analysis-session): 串行化换路并阻止停止后取流`
+  * 完成：并发切换请求严格串行，旧 runner 完成清理后才启动下一路；停止或自然结束的会话不再创建新 MJPEG 流。
+  * 实现：会话生命周期增加异步互斥并复用内部停止路径；非活动流返回稳定的 `ANALYSIS_SESSION_NOT_ACTIVE` 冲突响应；假实现复用视觉模块的三类 PPE 支持集合。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，25 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，204 项通过、1 项跳过；`git diff --check`，通过。
+
+* 20:51 `fix(analysis-session): 保留已完成会话的演示流`
+  * 完成：假分析快速完成后仍可读取有限 MJPEG 结果，显式停止或 VLM 失败后继续拒绝取流。
+  * 实现：将 runner 活动状态与流可读状态分离，避免 POST 后稍迟请求流时因自然完成返回 409，同时保持停止释放资源语义。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py -q`，26 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/domain tests/modules tests/services -q`，204 项通过、1 项跳过；`git diff --check`，通过。
+
+* 21:29 `fix(api): 统一分析接口错误与OpenAPI契约`
+  * 完成：请求字段校验统一返回冻结的 `ErrorResponse`，分析会话端点在 OpenAPI 中声明实际成功和错误响应。
+  * 实现：注册 `RequestValidationError` 映射为 `VALIDATION_ERROR`；启动、停止和取流接口声明 404/409/422 模型，MJPEG 200 响应声明为二进制 `multipart/x-mixed-replace`。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_analysis_sessions.py tests/api/test_analysis_sessions_ws.py tests/domain/test_video_analysis.py tests/services/test_event_hub.py tests/services/test_session_manager.py -q`，27 项通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_error_mapping.py::test_human_command_openapi_declares_all_workflow_error_responses tests/domain tests/modules tests/services -q`，205 项通过、1 项跳过；后端未配置 lint 和类型检查，前端与 ML 未受影响；`git diff --check`，通过。
+
 ### 问题与处理
 
 * 新增回归测试首次运行 15 项失败、21 项通过；补齐工具绑定、工具调用标识、冻结事实提示词及 DeepSeek V4 配置后，相关测试全部通过。
 * 后端全量套件在既有 API 测试发生环境性阻塞；中断后用主工作区单测复现，确认并非本任务分支引入。
+* 切片六测试发现运行时类型别名导入失败、同步依赖挂起、WebSocket 断开不清理、runner 技术异常未映射、停止返回早于资源释放及未启用 PPE 被演示；均已补回归测试并修复。
+* 双轴复审发现并发换路可产生重叠 runner、停止后仍可重新取流；已增加生命周期互斥、活动状态校验和回归测试。
+* 修复后复审发现假 runner 过快完成会使首次 MJPEG 请求返回 409；已分离流可读状态并覆盖完成后读取、停止后拒绝两种行为。
+* 契约复审发现请求校验错误仍泄露 FastAPI `detail`，且分析接口 OpenAPI 未声明实际错误模型和 MJPEG 媒体类型；已通过 ASGI 与 OpenAPI 回归测试修复。
 
 ### 后续计划
 
-* 推送 `feat/agent-investigation` 任务分支，交由项目负责人验收；真实 DeepSeek 调用因未配置密钥与可选 AI 依赖未运行。
+* 推送 `feat/analysis-sessions` 任务分支，交由项目负责人验收；真实视频推理接线等待对应模块交付。
