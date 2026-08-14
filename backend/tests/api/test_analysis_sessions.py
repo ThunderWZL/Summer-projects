@@ -69,7 +69,11 @@ def test_start_request_rejects_extra_fields() -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["type"] == "extra_forbidden"
+    assert response.json() == {
+        "code": "VALIDATION_ERROR",
+        "message": "request validation failed",
+        "current_version": None,
+    }
 
 
 def test_unknown_video_and_session_return_stable_error_responses() -> None:
@@ -166,3 +170,33 @@ def test_finished_fake_session_stream_remains_available_until_stop() -> None:
 
     assert response.status_code == 200
     assert response.content.startswith(b"--frame\r\nContent-Type: image/jpeg")
+
+
+def test_analysis_session_openapi_freezes_success_and_error_responses() -> None:
+    schema = app.openapi()
+    paths = schema["paths"]
+    error_schema = {"$ref": "#/components/schemas/ErrorResponse"}
+
+    start_responses = paths["/api/v1/analysis-sessions"]["post"]["responses"]
+    stop_responses = paths[
+        "/api/v1/analysis-sessions/{session_id}/stop"
+    ]["post"]["responses"]
+    stream_responses = paths[
+        "/api/v1/analysis-sessions/{session_id}/stream.mjpg"
+    ]["get"]["responses"]
+
+    for responses, error_statuses in (
+        (start_responses, ("404", "422")),
+        (stop_responses, ("404", "422")),
+        (stream_responses, ("404", "409", "422")),
+    ):
+        for status_code in error_statuses:
+            assert responses[status_code]["content"]["application/json"][
+                "schema"
+            ] == error_schema
+
+    assert stream_responses["200"]["content"] == {
+        "multipart/x-mixed-replace": {
+            "schema": {"type": "string", "format": "binary"}
+        }
+    }
