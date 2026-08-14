@@ -128,6 +128,13 @@ class InvalidResponsibleParty(CaseWorkflowError):
         )
 
 
+class PpeNotRequired(CaseWorkflowError):
+    code = "PPE_NOT_REQUIRED"
+
+    def __init__(self) -> None:
+        super().__init__("candidate PPE is not required for the investigated task")
+
+
 class CaseWorkflow:
     def __init__(
         self,
@@ -235,6 +242,11 @@ class CaseWorkflow:
             actor_role = self._actor_roles.role_for(command.actor_id)
             if actor_role is not ActorRole.PROJECT_SAFETY_REVIEWER:
                 raise PermissionDenied(command.actor_id)
+            if (
+                snapshot.investigation is None
+                or snapshot.ppe_type not in snapshot.investigation.required_ppe
+            ):
+                raise PpeNotRequired()
             if not self._responsible_party_is_eligible(
                 snapshot, command.responsible_party_id
             ):
@@ -259,7 +271,7 @@ class CaseWorkflow:
                 actor_id=command.actor_id,
                 actor_role=actor_role,
                 reason=command.reason,
-                occurred_at=self._clock(),
+                occurred_at=self._transition_time(snapshot),
             )
             return self._store.commit(
                 updated,
@@ -285,7 +297,7 @@ class CaseWorkflow:
                 actor_id=command.actor_id,
                 actor_role=actor_role,
                 reason=command.reason,
-                occurred_at=self._clock(),
+                occurred_at=self._transition_time(snapshot),
             )
             return self._store.commit(
                 updated,
@@ -315,7 +327,7 @@ class CaseWorkflow:
                 actor_id=command.actor_id,
                 actor_role=actor_role,
                 reason=command.reason,
-                occurred_at=self._clock(),
+                occurred_at=self._transition_time(snapshot),
             )
             return self._store.commit(
                 updated,
@@ -343,7 +355,7 @@ class CaseWorkflow:
                 actor_id=command.actor_id,
                 actor_role=actor_role,
                 reason=command.reason,
-                occurred_at=self._clock(),
+                occurred_at=self._transition_time(snapshot),
             )
             return self._store.commit(
                 updated,
@@ -369,7 +381,7 @@ class CaseWorkflow:
                 actor_id=command.actor_id,
                 actor_role=actor_role,
                 reason=command.reason,
-                occurred_at=self._clock(),
+                occurred_at=self._transition_time(snapshot),
             )
             return self._store.commit(
                 updated,
@@ -399,7 +411,7 @@ class CaseWorkflow:
             actor_id=command.actor_id,
             actor_role=actor_role,
             reason=command.reason,
-            occurred_at=self._clock(),
+            occurred_at=self._transition_time(snapshot),
         )
         return self._store.commit(
             updated,
@@ -422,10 +434,13 @@ class CaseWorkflow:
             from_status=snapshot.status,
             to_status=target_status,
             reason=reason,
-            occurred_at=self._clock(),
+            occurred_at=self._transition_time(snapshot),
         )
         return self._store.commit(
             updated,
             expected_version=expected_version,
             transition=transition,
         )
+
+    def _transition_time(self, snapshot: CaseSnapshot) -> datetime:
+        return max(self._clock(), snapshot.updated_at)

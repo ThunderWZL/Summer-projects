@@ -4,11 +4,11 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from app.contracts import AnalysisStage, CandidateCreatedPayload
-from app.domain.case_store import CaseQuery, CaseStorePort
+from app.domain.inmemory.fixture_candidates import candidate_for_video
 from app.domain.site_context import SiteContextPort
 from app.domain.video_analysis import AnalysisSession
-from app.modules.video_analysis.observation import SUPPORTED_PPE
 from app.services.session_manager import SessionManager
+from app.services.case_pipeline import CasePipeline
 
 
 _JPEG = (
@@ -21,11 +21,15 @@ _JPEG = (
 
 
 class InMemoryVideoAnalysis:
-    """Deterministic demo analysis that reads fixtures without changing them."""
+    """Deterministic demo analysis that feeds fixtures through the case pipeline."""
 
-    def __init__(self, context: SiteContextPort, cases: CaseStorePort) -> None:
+    def __init__(
+        self,
+        context: SiteContextPort,
+        pipeline: CasePipeline,
+    ) -> None:
         self._context = context
-        self._cases = cases
+        self._pipeline = pipeline
 
     async def get_stream(self, session_id: str) -> AsyncIterator[bytes]:
         del session_id
@@ -58,17 +62,9 @@ class InMemoryVideoAnalysis:
             message="running deterministic demo inference",
             inference_fps=12.0,
         )
-        case = next(
-            (
-                item
-                for item in self._cases.list(CaseQuery(page_size=1_000_000)).items
-                if item.camera_id == video.camera_id
-                and item.ppe_type in SUPPORTED_PPE
-            ),
-            None,
-        )
-        if case is not None:
-            candidate = case.candidate
+        candidate = candidate_for_video(video, session.session_id)
+        if candidate is not None:
+            case = self._pipeline.ensure_case(candidate)
             await manager.publish_candidate(
                 session.session_id,
                 case_id=case.case_id,
@@ -81,8 +77,10 @@ class InMemoryVideoAnalysis:
                 ),
                 playback_ms=candidate.last_seen_ms,
             )
+            await self._pipeline.process_candidate(candidate)
+        case_count = 1 if candidate is not None else 0
         await manager.finish_session(
             session.session_id,
-            candidate_count=1 if case is not None else 0,
-            case_count=1 if case is not None else 0,
+            candidate_count=case_count,
+            case_count=case_count,
         )

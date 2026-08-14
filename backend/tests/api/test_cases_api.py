@@ -4,7 +4,15 @@ from datetime import datetime
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_case_store, get_clock
+from app.api.deps import (
+    get_case_pipeline,
+    get_case_store,
+    get_clock,
+    get_investigation_port,
+)
+from app.contracts import CaseStatus
+from app.domain.inmemory.case_store import InMemoryCaseStore
+from app.domain.inmemory.fixture_cases import demo_cases
 from app.main import app
 
 
@@ -12,12 +20,15 @@ NOW = datetime.fromisoformat("2026-08-09T10:00:00+08:00")
 
 
 def setup_function() -> None:
+    get_case_pipeline.cache_clear()
+    get_investigation_port.cache_clear()
     get_case_store.cache_clear()
     app.dependency_overrides[get_clock] = lambda: lambda: NOW
 
 
 def teardown_function() -> None:
     app.dependency_overrides.pop(get_clock, None)
+    app.dependency_overrides.pop(get_case_store, None)
 
 
 async def request(method: str, path: str, json: dict | None = None):
@@ -55,14 +66,14 @@ def test_case_list_filters_paginates_and_returns_backend_statistics() -> None:
     assert body["statistics"] == {
         "open_count": 4,
         "needs_human_facts_count": 1,
-        "pending_review_count": 1,
+        "pending_review_count": 2,
         "rectification_open_count": 1,
-        "recheck_pending_count": 1,
+        "recheck_pending_count": 0,
         "overdue_count": 1,
         "average_closure_minutes": 1488.6,
         "top_repeat_risk": {
-            "zone_id": "zone-01",
-            "zone_name": "脚手架区",
+            "zone_id": "zone-02",
+            "zone_name": "切割区",
             "ppe_type": "helmet",
             "case_count": 1,
         },
@@ -97,7 +108,7 @@ def test_case_detail_aggregates_context_citations_submissions_and_timeline() -> 
     ]
 
 
-def test_officer_facts_command_updates_version_timeline_and_submission_history() -> None:
+def test_officer_facts_command_saves_once_and_returns_latest_reinvestigation() -> None:
     response = asyncio.run(
         request(
             "POST",
@@ -113,18 +124,104 @@ def test_officer_facts_command_updates_version_timeline_and_submission_history()
     )
 
     assert response.status_code == 200
-    assert (
-        response.json()["snapshot"]["status"],
-        response.json()["version"],
-        len(response.json()["snapshot"]["transitions"]),
-    ) == ("REINVESTIGATE", 5, 4)
+    assert response.json()["snapshot"]["status"] == "NEEDS_HUMAN_FACTS"
+    assert response.json()["version"] == response.json()["snapshot"]["version"]
+    assert response.json()["version"] == 7
 
     detail = asyncio.run(request("GET", "/api/v1/cases/case-facts-01")).json()
-    assert len(detail["timeline"]) == 5
+    assert len(detail["timeline"]) == 7
+    assert [item["to_status"] for item in detail["timeline"][-3:]] == [
+        "REINVESTIGATE",
+        "INVESTIGATING",
+        "NEEDS_HUMAN_FACTS",
+    ]
+    assert len(detail["human_submissions"]) == 1
     assert detail["human_submissions"][0]["submission_type"] == "FACTS"
     assert detail["human_submissions"][0]["facts"] == {
         "task_code": "SCAFFOLD_ASSEMBLY"
     }
+
+
+def test_top_repeat_risk_counts_only_confirmed_applicable_cases() -> None:
+    base = next(case for case in demo_cases() if case.case_id == "case-01")
+    store = InMemoryCaseStore()
+
+    def variant(
+        suffix: str,
+        *,
+        status: CaseStatus,
+        investigation,
+        vlm_review=True,
+    ):
+        evidence = base.candidate.model_copy(
+            update={"candidate_id": f"candidate-repeat-{suffix}"}, deep=True
+        )
+        return base.model_copy(
+            update={
+                "case_id": f"case-repeat-{suffix}",
+                "candidate": evidence,
+                "status": status,
+                "vlm_review": base.vlm_review if vlm_review else None,
+                "investigation": investigation,
+            },
+            deep=True,
+        )
+
+    applicable = base.investigation
+    assert applicable is not None
+    inapplicable = applicable.model_copy(update={"required_ppe": ["gloves"]})
+    for snapshot in (
+        variant("one", status=CaseStatus.PENDING_REVIEW, investigation=applicable),
+        variant("two", status=CaseStatus.CLOSED, investigation=applicable),
+        variant("vlm-rejected", status=CaseStatus.VLM_REJECTED, investigation=applicable),
+        variant("no-investigation", status=CaseStatus.VLM_REVIEWED, investigation=None),
+        variant("not-applicable", status=CaseStatus.PENDING_REVIEW, investigation=inapplicable),
+    ):
+        store.create(snapshot)
+    app.dependency_overrides[get_case_store] = lambda: store
+
+    response = asyncio.run(request("GET", "/api/v1/cases"))
+
+    assert response.status_code == 200
+    assert response.json()["statistics"]["top_repeat_risk"] == {
+        "zone_id": "zone-02",
+        "zone_name": "切割区",
+        "ppe_type": "helmet",
+        "case_count": 2,
+    }
+
+
+def test_cam04_gloves_cannot_be_approved_through_rest() -> None:
+    before = asyncio.run(
+        request("GET", "/api/v1/cases/case-recheck-no-evidence")
+    ).json()
+
+    response = asyncio.run(
+        request(
+            "POST",
+            "/api/v1/cases/case-recheck-no-evidence/review",
+            {
+                "command_type": "APPROVE_RECTIFICATION",
+                "actor_id": "reviewer-01",
+                "expected_version": 4,
+                "reason": "尝试批准不适用的手套整改",
+                "responsible_party_id": "team-mechanical-01",
+                "rectification_due_at": "2026-08-20T18:00:00+08:00",
+            },
+        )
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": "PPE_NOT_REQUIRED",
+        "message": "candidate PPE is not required for the investigated task",
+        "current_version": None,
+    }
+    after = asyncio.run(
+        request("GET", "/api/v1/cases/case-recheck-no-evidence")
+    ).json()
+    assert after["snapshot"] == before["snapshot"]
+    assert after["timeline"] == before["timeline"]
 
 
 def test_reviewer_and_officer_complete_review_rectification_and_recheck() -> None:
@@ -251,7 +348,7 @@ def test_review_rejects_ineligible_responsible_party_without_changing_case() -> 
         reinvestigation.status_code,
         reinvestigation.json()["snapshot"]["status"],
         reinvestigation.json()["version"],
-    ) == (200, "REINVESTIGATE", 5)
+    ) == (200, "NEEDS_HUMAN_FACTS", 7)
 
 
 def test_closed_vehicle_case_investigation_matches_its_vest_candidate() -> None:
@@ -272,39 +369,28 @@ def test_closed_vehicle_case_investigation_matches_its_vest_candidate() -> None:
     assert snapshot["candidate"]["frames"][0][
         "observation_confidence"
     ] is None
-    assert snapshot["investigation"] == {
-        "facts": {"task_code": "VEHICLE_ZONE_OPERATION"},
-        "conflicts": [],
-        "missing_fields": [],
-        "applicable_task": "VEHICLE_ZONE_OPERATION",
-        "hazards": ["车辆碰撞"],
-        "required_ppe": ["vest"],
-        "recommendation": "车辆作业区人员应佩戴高可视背心",
-        "rectification_recommendation": {
-            "responsible_party_id": "team-logistics-01",
-            "due_at": "2026-08-08T10:00:00+08:00",
-            "reason": "车辆作业区需要提高人员可见性",
-        },
-        "citations": [
-            {
-                "document_title": "建筑工人施工现场劳动保护基本配置指南",
-                "standard_no": None,
-                "section": "高可视警示服",
-                "effective_date": None,
-                "source_url": "https://www.gov.cn/zhengce/zhengceku/2021-01/19/5580999/",
-                "excerpt": "车辆作业区域应按风险配备高可视警示服。",
-            }
-        ],
-        "tool_trace": [
-            "get_zone_at",
-            "find_active_work_permits",
-            "get_task_ppe_matrix",
-            "search_authoritative_requirements",
-        ],
-    }
+    investigation = snapshot["investigation"]
+    assert investigation["facts"]["task_code"] == "VEHICLE_ZONE_OPERATION"
+    assert investigation["facts"]["task_source"] == "active_work_permit"
+    assert investigation["conflicts"] == []
+    assert investigation["missing_fields"] == []
+    assert investigation["applicable_task"] == "VEHICLE_ZONE_OPERATION"
+    assert investigation["hazards"] == ["车辆碰撞"]
+    assert investigation["required_ppe"] == ["vest"]
+    assert investigation["recommendation"] == (
+        "车辆作业区人员应佩戴高可视背心"
+    )
+    assert investigation["rectification_recommendation"][
+        "responsible_party_id"
+    ] == "team-logistics-01"
+    assert len(investigation["citations"]) == 1
+    assert investigation["tool_trace"] == [
+        "list_eligible_responsible_parties",
+        "search_authoritative_requirements",
+    ]
 
 
-def test_recheck_fixture_has_matching_evidence_submission_and_timeline() -> None:
+def test_cam04_fixture_stays_pending_without_inapplicable_rectification_audit() -> None:
     response = asyncio.run(
         request("GET", "/api/v1/cases/case-recheck-no-evidence")
     )
@@ -312,42 +398,11 @@ def test_recheck_fixture_has_matching_evidence_submission_and_timeline() -> None
     assert response.status_code == 200
     body = response.json()
     snapshot = body["snapshot"]
-    assert snapshot["status"] == "RECHECK_PENDING"
-    assert snapshot["rectification_description"] == "已完成防卷入整改并复核作业要求"
-    assert snapshot["rectification_evidence"] == [
-        {
-            "evidence_id": "evidence-case-recheck-01",
-            "image_url": "/evidence/case-recheck-no-evidence/after.jpg",
-            "captured_at": "2026-08-07T11:04:00+08:00",
-            "note": "整改后的旋转设备作业现场",
-        }
-    ]
-    assert body["human_submissions"] == [
-        {
-            "submission_id": "submission-case-recheck-no-evidence-6",
-            "case_id": "case-recheck-no-evidence",
-            "actor_id": "officer-01",
-            "actor_name": "现场安全员",
-            "actor_role": "SITE_SAFETY_OFFICER",
-            "reason": "现场已完成整改",
-            "created_at": "2026-08-07T11:05:00+08:00",
-            "submission_type": "RECTIFICATION_EVIDENCE",
-            "description": "已完成防卷入整改并复核作业要求",
-            "evidence": snapshot["rectification_evidence"],
-        }
-    ]
-    assert body["timeline"][-1] == {
-        "timeline_item_id": "case-recheck-no-evidence-transition-5",
-        "source": "HUMAN",
-        "action": "RECHECK_PENDING",
-        "from_status": "RECTIFICATION_OPEN",
-        "to_status": "RECHECK_PENDING",
-        "actor_id": "officer-01",
-        "actor_name": "现场安全员",
-        "actor_role": "SITE_SAFETY_OFFICER",
-        "reason": "现场已完成整改",
-        "occurred_at": "2026-08-07T11:05:00+08:00",
-    }
+    assert snapshot["status"] == "PENDING_REVIEW"
+    assert snapshot["rectification_description"] is None
+    assert snapshot["rectification_evidence"] == []
+    assert body["human_submissions"] == []
+    assert body["timeline"][-1]["to_status"] == "PENDING_REVIEW"
 
 
 @pytest.mark.parametrize(

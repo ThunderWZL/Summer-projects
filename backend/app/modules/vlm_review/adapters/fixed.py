@@ -104,7 +104,16 @@ class FixedVlmAdapter:
         if candidate.confidence < self._min_confidence:
             return False
         if candidate.evidence_kind is EvidenceKind.MISSING_POSITIVE_ASSOCIATION:
-            return False
+            return (
+                len(candidate.frames) == 3
+                and {frame.frame_role for frame in candidate.frames}
+                == {FrameRole.BEFORE, FrameRole.REPRESENTATIVE, FrameRole.AFTER}
+                and all(
+                    frame.observation_box is None
+                    and frame.observation_confidence is None
+                    for frame in candidate.frames
+                )
+            )
         representative = next(
             frame
             for frame in candidate.frames

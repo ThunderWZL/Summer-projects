@@ -347,6 +347,7 @@
 ### 当日目标
 
 * 完成切片七六路实时监控台、分析通道切换、实时事件计数和连接失败重试，并验证前后端共享契约。
+* 完成切片八确定性案件流水线与六路演示闭环，验证候选、复核、调查、人工处置和关闭链路。
 
 ### 开发记录
 
@@ -355,11 +356,17 @@
   * 实现：封装演示目录与会话 REST、严格校验并按 sequence 去重 WebSocket 事件；候选数仅采用 `SESSION_PROGRESS` 和 `SESSION_FINISHED` 权威计数；状态机隔离过期会话事件，并处理 StrictMode 加载、重复启动和终态连接释放。
   * 验证：`cd frontend && npm run test`，7 个测试文件共 33 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_demo_api.py tests/api/test_analysis_sessions.py`，11 项通过；`git diff --check`，通过；前端未配置 lint，未运行。
 
+* 02:11 `feat(pipeline): 实现确定性案件闭环`
+  * 完成：实现候选建案、VLM 复核、确定性调查、人工补事实后自动重调查，以及六路演示从候选到关闭的后端闭环。
+  * 实现：增加三帧候选夹具和幂等流水线；按冻结契约区分语义拒绝与技术失败，复用 resolver 生成 PPE 适用性，落实不适用审批守卫、统计过滤和会话权威计数。
+  * 验证：`cd backend && PYTHONPATH=/tmp/siteppe-case-pipeline/backend /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，313 项通过、1 项跳过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 回归测试发现 StrictMode 首次加载失效、首次启动失败无提示、重复 POST 和会话终态未关闭 WebSocket；已修复并增加对应行为测试。
 * `npm audit` 报告 3 个既有开发依赖链 high 漏洞，来自 `js-yaml 4.3.0` 和 `nanoid 3.3.17`；`npm audit --omit=dev` 确认生产依赖 0 个漏洞，本切片未越界升级既有依赖。
+* 切片八首轮回归发现 `VLM_REJECTED` 被计入高频风险、CAM-04 遗留整改提交、离线调查缺少引用导致 CAM-02 无法闭环；已分别修正统计口径、夹具状态和离线权威引用，并补充回归测试。
 
 ### 后续计划
 
-* 推送 `feat/monitor-console` 任务分支，交由项目负责人进行浏览器联调验收。
+* 完成切片八前端路由与角色状态串联，执行代码审查后推送 `feat/case-pipeline` 任务分支。
