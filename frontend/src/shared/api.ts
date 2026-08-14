@@ -3,7 +3,7 @@ export type PpeType =
   | "goggles"
   | "gloves"
   | "vest"
-  | "safety_shoes";
+  | "boots";
 
 export type ActorRole =
   | "SITE_SAFETY_OFFICER"

@@ -1,4 +1,6 @@
-export type PpeType = "helmet" | "goggles" | "gloves" | "boots" | "vest";
+import type { ActorRole, DemoContext, DemoUser, PpeType } from "../../shared/api";
+
+export type { ActorRole, DemoContext, DemoUser, PpeType };
 
 export type CaseStatus =
   | "YOLO_CANDIDATE"
@@ -13,9 +15,6 @@ export type CaseStatus =
   | "RECHECK_PENDING"
   | "CLOSED";
 
-export type ActorRole =
-  | "SITE_SAFETY_OFFICER"
-  | "PROJECT_SAFETY_REVIEWER";
 export type CaseUrgency = "HIGH" | "MEDIUM" | "LOW";
 export type FrameRole = "BEFORE" | "REPRESENTATIVE" | "AFTER";
 export type TimelineSource = "YOLO" | "VLM" | "AGENT" | "HUMAN";
@@ -252,13 +251,6 @@ export interface CaseDetailResponse {
   timeline: CaseTimelineItem[];
 }
 
-export interface DemoUser {
-  actor_id: string;
-  name: string;
-  role: ActorRole;
-  active: boolean;
-}
-
 export interface ResponsibleParty {
   party_id: string;
   name: string;
@@ -271,12 +263,6 @@ export interface ZoneInfo {
   zone_id: string;
   name: string;
   zone_type: string;
-}
-
-export interface DemoContext {
-  users: DemoUser[];
-  responsible_parties: ResponsibleParty[];
-  zones: ZoneInfo[];
 }
 
 export interface CaseFilters {

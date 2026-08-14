@@ -523,12 +523,6 @@
 .detail-loading { display: grid; gap: 12px; margin-top: 50px; }
 .detail-loading div { height: 130px; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.76), transparent) -200% 0 / 200% 100%, var(--case-deep); animation: case-shimmer 1.6s linear infinite; }
 
-@media (prefers-reduced-transparency: reduce) {
-  .case-workspace__bar {
-    background: var(--case-raised);
-    backdrop-filter: none;
-  }
-}
 .detail-loading div:nth-child(1) { height: 210px; }
 
 @page {
@@ -543,7 +537,6 @@
     background: #fff;
   }
 
-  .case-workspace__bar,
   .case-context-notice,
   .detail-toolbar,
   .detail-action-column {
