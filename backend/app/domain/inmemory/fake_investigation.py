@@ -23,25 +23,10 @@ class FixtureRequirementRetriever:
 
 
 class FixtureInvestigation(InvestigationPort):
-    """Fixture policy layered over the real resolver/agent investigation service."""
+    """Deterministic fixture adapter around the real investigation service."""
 
-    def __init__(self, delegate: InvestigationPort, store) -> None:
+    def __init__(self, delegate: InvestigationPort) -> None:
         self._delegate = delegate
-        self._store = store
 
     def investigate(self, case_id: str) -> InvestigationResult:
-        result = self._delegate.investigate(case_id)
-        snapshot = self._store.get(case_id)
-        if (
-            snapshot is not None
-            and snapshot.camera_id == "CAM-02"
-            and not snapshot.human_facts.get("site_note")
-        ):
-            return result.model_copy(
-                update={
-                    "recommendation": None,
-                    "rectification_recommendation": None,
-                    "citations": [],
-                }
-            )
-        return result
+        return self._delegate.investigate(case_id)

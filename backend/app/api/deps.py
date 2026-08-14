@@ -161,7 +161,7 @@ def get_fixture_investigation_port() -> InvestigationPort:
         get_investigation_resolver(),
         FixedInvestigationAgent(tools),
     )
-    return FixtureInvestigation(delegate, store)
+    return FixtureInvestigation(delegate)
 
 
 def build_case_workflow(

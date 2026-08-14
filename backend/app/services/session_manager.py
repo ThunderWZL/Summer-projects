@@ -11,9 +11,11 @@ from app.contracts import (
     AnalysisEventType,
     AnalysisStage,
     CandidateCreatedPayload,
+    CaseUpdatedPayload,
     SessionFailedPayload,
     SessionFinishedPayload,
     SessionProgressPayload,
+    VlmReviewedPayload,
 )
 from app.domain.video_analysis import (
     AnalysisSession,
@@ -141,6 +143,38 @@ class SessionManager(VideoAnalysisPort):
         return await self._event_hub.publish(
             session_id,
             AnalysisEventType.CANDIDATE_CREATED,
+            payload,
+            case_id=case_id,
+            playback_ms=playback_ms,
+        )
+
+    async def publish_vlm_reviewed(
+        self,
+        session_id: str,
+        *,
+        case_id: str,
+        payload: VlmReviewedPayload,
+        playback_ms: int = 0,
+    ) -> AnalysisEvent:
+        return await self._event_hub.publish(
+            session_id,
+            AnalysisEventType.VLM_REVIEWED,
+            payload,
+            case_id=case_id,
+            playback_ms=playback_ms,
+        )
+
+    async def publish_case_updated(
+        self,
+        session_id: str,
+        *,
+        case_id: str,
+        payload: CaseUpdatedPayload,
+        playback_ms: int = 0,
+    ) -> AnalysisEvent:
+        return await self._event_hub.publish(
+            session_id,
+            AnalysisEventType.CASE_UPDATED,
             payload,
             case_id=case_id,
             playback_ms=playback_ms,
