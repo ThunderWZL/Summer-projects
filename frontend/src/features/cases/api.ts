@@ -4,7 +4,6 @@ import type {
   CaseFilters,
   CaseListResponse,
   CaseSnapshot,
-  DemoContext,
 } from "./types";
 
 const API_BASE = "";
@@ -89,10 +88,6 @@ export function fetchCaseDetail(caseId: string, signal?: AbortSignal) {
     `/api/v1/cases/${encodeURIComponent(caseId)}`,
     { signal },
   );
-}
-
-export function fetchDemoContext(signal?: AbortSignal) {
-  return request<DemoContext>("/api/v1/demo/context", { signal });
 }
 
 export async function submitCaseCommand(

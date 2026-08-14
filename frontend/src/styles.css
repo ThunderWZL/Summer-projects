@@ -1,7 +1,8 @@
 :root {
   color: #e7edef;
   background: #10191e;
-  font-family: Inter, "Noto Sans SC", system-ui, sans-serif;
+  font-family: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei",
+    system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --page: #10191e;
@@ -60,10 +61,7 @@ button:disabled {
 
 .app-shell {
   min-height: 100dvh;
-  background:
-    linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
-    var(--page);
-  background-size: 100% 40px;
+  background: var(--page);
 }
 
 .topbar {
@@ -86,13 +84,47 @@ button:disabled {
 }
 
 .topbar nav {
+  display: flex;
+  gap: 20px;
   color: var(--text);
   font-weight: 700;
 }
 
-.topbar nav [aria-current="page"] {
+.topbar nav a {
   padding-block: 18px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.topbar nav [aria-current="page"] {
+  color: var(--text);
   border-bottom: 2px solid var(--accent);
+}
+
+.app-shell--cases .topbar {
+  color: #111827;
+  background: rgb(255 255 255 / 96%);
+  border-bottom-color: #d1d5db;
+}
+
+.app-shell--cases .brand {
+  color: #0f67d8;
+}
+
+.app-shell--cases .topbar nav a,
+.app-shell--cases .topbar label {
+  color: #6b7280;
+}
+
+.app-shell--cases .topbar nav [aria-current="page"] {
+  color: #111827;
+  border-bottom-color: #1677ff;
+}
+
+.app-shell--cases .topbar select {
+  color: #111827;
+  background: #fff;
+  border-color: #d1d5db;
 }
 
 .topbar label {

@@ -1,28 +1,22 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 
-const monitorMocks = vi.hoisted(() => ({
-  starts: vi.fn(),
+const observations = vi.hoisted(() => ({
+  monitorMounts: vi.fn(),
+  caseProps: vi.fn(),
 }));
 
 vi.mock("./features/monitor/MonitorPage", async () => {
-  const { useState } = await import("react");
+  const { useEffect, useState } = await import("react");
   return {
     MonitorPage: () => {
       const [running, setRunning] = useState(false);
+      useEffect(() => observations.monitorMounts(), []);
       return (
-        <section aria-label="监控台">
-          <button
-            type="button"
-            onClick={() => {
-              monitorMocks.starts();
-              setRunning(true);
-            }}
-          >
-            开始测试监控
-          </button>
+        <section aria-label="监控台工作区">
+          <button type="button" onClick={() => setRunning(true)}>启动监控</button>
           {running ? <span>监控运行中</span> : null}
         </section>
       );
@@ -30,19 +24,59 @@ vi.mock("./features/monitor/MonitorPage", async () => {
   };
 });
 
+vi.mock("./features/cases/CasesWorkspace", () => ({
+  CasesWorkspace: (props: {
+    actorId: string;
+    selectedCaseId: string | null;
+    onSelectCase: (caseId: string | null) => void;
+  }) => {
+    observations.caseProps(props);
+    return (
+      <section aria-label="案件工作区">
+        <span>actor:{props.actorId}</span>
+        <span>case:{props.selectedCaseId ?? "list"}</span>
+        <button type="button" onClick={() => props.onSelectCase("case-02")}>打开案件</button>
+      </section>
+    );
+  },
+}));
+
 describe("App", () => {
-  it("switches between the frozen demo actors without restarting the monitor", () => {
+  beforeEach(() => {
+    window.location.hash = "";
+    observations.monitorMounts.mockClear();
+    observations.caseProps.mockClear();
+  });
+
+  it("defaults to monitor and navigates to cases without remounting either workspace", () => {
     render(<App />);
-    const role = screen.getByRole("combobox", { name: "当前角色" });
-    expect((role as HTMLSelectElement).value).toBe("officer-01");
+    fireEvent.click(screen.getByRole("button", { name: "启动监控" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "开始测试监控" }));
+    expect(screen.getByRole("link", { name: "监控台" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("link", { name: "案件中心" }));
+
     expect(screen.getByText("监控运行中")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "案件中心" }).getAttribute("aria-current")).toBe("page");
+    expect(observations.monitorMounts).toHaveBeenCalledOnce();
+  });
 
-    fireEvent.change(role, { target: { value: "reviewer-01" } });
+  it("opens a case hash deep link and falls back to monitor for an unknown hash", () => {
+    window.location.hash = "#/cases/case-02";
+    render(<App />);
+    expect(screen.getByText("case:case-02")).toBeTruthy();
 
-    expect((role as HTMLSelectElement).value).toBe("reviewer-01");
-    expect(screen.getByText("监控运行中")).toBeTruthy();
-    expect(monitorMocks.starts).toHaveBeenCalledOnce();
+    window.location.hash = "#/unknown";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+
+    expect(screen.getByRole("link", { name: "监控台" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("passes the selected top-level actor into the cases workspace", () => {
+    render(<App />);
+    fireEvent.change(screen.getByRole("combobox", { name: "当前角色" }), {
+      target: { value: "reviewer-01" },
+    });
+
+    expect(screen.getByText("actor:reviewer-01")).toBeTruthy();
   });
 });

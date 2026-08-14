@@ -361,6 +361,11 @@
   * 实现：增加三帧候选夹具和幂等流水线；按冻结契约区分语义拒绝与技术失败，复用 resolver 生成 PPE 适用性，落实不适用审批守卫、统计过滤和会话权威计数。
   * 验证：`cd backend && PYTHONPATH=/tmp/siteppe-case-pipeline/backend /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，313 项通过、1 项跳过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
+* 02:12 `feat(frontend): 串联监控与案件闭环`
+  * 完成：在统一应用壳内串联监控台、案件列表和案件详情，并由顶层统一维护演示角色和案件路由。
+  * 实现：采用 Hash 路由保持静态部署兼容，监控与案件工作区常驻挂载以保留分析状态；复用共享 API 类型和演示上下文，移除重复导航、角色选择与请求实现。
+  * 验证：`cd frontend && npm run test`，9 个测试文件共 42 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json src/App.tsx src/styles.css src/features/cases/CasesWorkspace.tsx src/features/cases/case-center.css src/features/review/case-detail.css`，无前端反模式发现；`git diff --check`，通过；前端未配置 lint，未运行。
+
 ### 问题与处理
 
 * 回归测试发现 StrictMode 首次加载失效、首次启动失败无提示、重复 POST 和会话终态未关闭 WebSocket；已修复并增加对应行为测试。
@@ -369,4 +374,4 @@
 
 ### 后续计划
 
-* 完成切片八前端路由与角色状态串联，执行代码审查后推送 `feat/case-pipeline` 任务分支。
+* 对 `feat/case-pipeline` 执行规范与契约双轴代码审查，根据审查结果完成必要修正并交由项目负责人验收。
