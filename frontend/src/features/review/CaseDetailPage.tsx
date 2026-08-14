@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { CaseApiError, fetchCaseDetail, submitCaseCommand } from "../cases/api";
 import {
@@ -96,7 +96,12 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
 
   return (
     <main className="case-detail" aria-labelledby="case-detail-title">
-      <button className="detail-back" type="button" onClick={onBack}>返回事件中心</button>
+      <div className="detail-toolbar">
+        <button className="detail-back" type="button" onClick={onBack}>返回事件中心</button>
+        <button className="detail-print" type="button" onClick={() => window.print()}>
+          打印事件报告
+        </button>
+      </div>
 
       <header className="detail-hero">
         <div>
@@ -243,11 +248,24 @@ function EvidenceCard({ frame }: { frame: EvidenceFrame }) {
   const [failed, setFailed] = useState(false);
   return (
     <figure className={frame.frame_role === "REPRESENTATIVE" ? "evidence-card is-representative" : "evidence-card"}>
-      <div className="evidence-card__image">
+      <div
+        className="evidence-card__image"
+        style={{ aspectRatio: `${frame.image_width} / ${frame.image_height}` }}
+      >
         {failed ? (
           <div className="evidence-fallback"><span>图像载入失败</span><button type="button" onClick={() => setFailed(false)}>重试</button></div>
         ) : (
-          <img src={frame.image_url} alt={`${FRAME_LABELS[frame.frame_role]}，视频 ${formatDuration(frame.timestamp_ms)} 处`} onError={() => setFailed(true)} />
+          <>
+            <img src={frame.image_url} alt={`${FRAME_LABELS[frame.frame_role]}，视频 ${formatDuration(frame.timestamp_ms)} 处`} onError={() => setFailed(true)} />
+            <span className="evidence-box evidence-box--person" style={evidenceBoxStyle(frame.person_box, frame)} aria-hidden="true">
+              <i>人员</i>
+            </span>
+            {frame.observation_box ? (
+              <span className="evidence-box evidence-box--observation" style={evidenceBoxStyle(frame.observation_box, frame)} aria-hidden="true">
+                <i>缺失装备</i>
+              </span>
+            ) : null}
+          </>
         )}
         <span className="evidence-role">{FRAME_LABELS[frame.frame_role]}</span>
       </div>
@@ -258,6 +276,18 @@ function EvidenceCard({ frame }: { frame: EvidenceFrame }) {
       </figcaption>
     </figure>
   );
+}
+
+function evidenceBoxStyle(
+  box: EvidenceFrame["person_box"],
+  frame: EvidenceFrame,
+): CSSProperties {
+  return {
+    left: `${(box.x1 / frame.image_width) * 100}%`,
+    top: `${(box.y1 / frame.image_height) * 100}%`,
+    width: `${((box.x2 - box.x1) / frame.image_width) * 100}%`,
+    height: `${((box.y2 - box.y1) / frame.image_height) * 100}%`,
+  };
 }
 
 function VlmPanel({ detail }: { detail: CaseDetailResponse }) {
@@ -294,6 +324,16 @@ function InvestigationPanel({ detail }: { detail: CaseDetailResponse }) {
         <p>{investigation.recommendation ?? "未生成处置建议"}</p>
         {investigation.rectification_recommendation ? <div className="agent-recommendation"><strong>建议责任：{investigation.rectification_recommendation.responsible_party_id}</strong><span>建议期限 {formatLongDateTime(investigation.rectification_recommendation.due_at)}</span><p>{investigation.rectification_recommendation.reason}</p></div> : null}
       </div>
+      {investigation.tool_trace.length ? (
+        <div className="investigation-tools">
+          <span>只读工具调用摘要</span>
+          <ol>
+            {investigation.tool_trace.map((entry, index) => (
+              <li key={`${index}-${entry}`}>{entry}</li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
       {Object.keys(investigation.facts).length ? <div className="investigation-facts"><span>确认事实</span><DefinitionGrid values={investigation.facts} /></div> : null}
     </div>
   );

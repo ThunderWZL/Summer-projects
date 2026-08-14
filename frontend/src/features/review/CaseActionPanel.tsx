@@ -143,29 +143,31 @@ function EvidenceForm({
   onSubmit,
 }: FormSharedProps) {
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [capturedAt, setCapturedAt] = useState("");
-  const [note, setNote] = useState("");
+  const [evidenceDrafts, setEvidenceDrafts] = useState(() => [emptyEvidenceDraft()]);
   const [reason, setReason] = useState("");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!capturedAt) return;
+    if (evidenceDrafts.some((draft) => !draft.imageUrl.trim() || !draft.capturedAt)) return;
     await onSubmit({
       command_type: "SUBMIT_RECTIFICATION_EVIDENCE",
       actor_id: actor.actor_id,
       expected_version: version,
       reason: reason.trim(),
       description: description.trim(),
-      evidence: [
-        {
-          evidence_id: `manual-${crypto.randomUUID()}`,
-          image_url: imageUrl.trim(),
-          captured_at: new Date(capturedAt).toISOString(),
-          note: note.trim() || null,
-        },
-      ],
+      evidence: evidenceDrafts.map((draft) => ({
+        evidence_id: createEvidenceId(),
+        image_url: draft.imageUrl.trim(),
+        captured_at: new Date(draft.capturedAt).toISOString(),
+        note: draft.note.trim() || null,
+      })),
     });
+  }
+
+  function updateEvidenceDraft(index: number, patch: Partial<EvidenceDraft>) {
+    setEvidenceDrafts((current) =>
+      current.map((draft, draftIndex) => draftIndex === index ? { ...draft, ...patch } : draft),
+    );
   }
 
   return (
@@ -175,24 +177,64 @@ function EvidenceForm({
         <span>整改说明</span>
         <textarea required value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="说明采取了什么整改措施" />
       </label>
-      <label>
-        <span>证据图片 URL</span>
-        <input required type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="https://…" />
-      </label>
-      <label>
-        <span>拍摄时间</span>
-        <input required type="datetime-local" value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} />
-      </label>
-      <label>
-        <span>图片备注（可选）</span>
-        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="拍摄位置或补充说明" />
-      </label>
+      <div className="evidence-draft-list">
+        {evidenceDrafts.map((draft, index) => (
+          <fieldset className="evidence-draft" key={draft.draftId}>
+            <legend>整改证据 {index + 1}</legend>
+            <label>
+              <span>证据图片 URL</span>
+              <input required type="url" value={draft.imageUrl} onChange={(event) => updateEvidenceDraft(index, { imageUrl: event.target.value })} placeholder="https://…" />
+            </label>
+            <label>
+              <span>拍摄时间</span>
+              <input required type="datetime-local" value={draft.capturedAt} onChange={(event) => updateEvidenceDraft(index, { capturedAt: event.target.value })} />
+            </label>
+            <label>
+              <span>图片备注（可选）</span>
+              <input value={draft.note} onChange={(event) => updateEvidenceDraft(index, { note: event.target.value })} placeholder="例如：整改前、整改后或拍摄位置" />
+            </label>
+            {evidenceDrafts.length > 1 ? (
+              <button className="evidence-draft__remove" type="button" onClick={() => setEvidenceDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))}>
+                移除此项
+              </button>
+            ) : null}
+          </fieldset>
+        ))}
+      </div>
+      <button className="evidence-draft__add" type="button" onClick={() => setEvidenceDrafts((current) => [...current, emptyEvidenceDraft()])}>
+        添加另一张证据
+      </button>
       <ReasonField value={reason} onChange={setReason} />
-      <button className="action-primary" disabled={submitting || !description.trim() || !imageUrl.trim() || !capturedAt || !reason.trim()}>
+      <button className="action-primary" disabled={submitting || !description.trim() || evidenceDrafts.some((draft) => !draft.imageUrl.trim() || !draft.capturedAt) || !reason.trim()}>
         {submitting ? "正在提交…" : "提交并进入复查"}
       </button>
     </form>
   );
+}
+
+interface EvidenceDraft {
+  draftId: string;
+  imageUrl: string;
+  capturedAt: string;
+  note: string;
+}
+
+let nextEvidenceDraftId = 1;
+
+function emptyEvidenceDraft(): EvidenceDraft {
+  return {
+    draftId: `evidence-draft-${nextEvidenceDraftId++}`,
+    imageUrl: "",
+    capturedAt: "",
+    note: "",
+  };
+}
+
+function createEvidenceId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `manual-${crypto.randomUUID()}`;
+  }
+  return `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function ReviewForm({
@@ -252,9 +294,9 @@ function ReviewForm({
       <ActionHeading title="项目审核" actor={actor} />
       <fieldset className="decision-tabs">
         <legend>审核决定</legend>
-        <button type="button" className={decision === "approve" ? "is-active" : ""} disabled={!applicable} onClick={() => setDecision("approve")}>批准整改</button>
-        <button type="button" className={decision === "reinvestigate" ? "is-active" : ""} onClick={() => setDecision("reinvestigate")}>退回调查</button>
-        <button type="button" className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>驳回事件</button>
+        <button type="button" aria-pressed={decision === "approve"} className={decision === "approve" ? "is-active" : ""} disabled={!applicable} onClick={() => setDecision("approve")}>批准整改</button>
+        <button type="button" aria-pressed={decision === "reinvestigate"} className={decision === "reinvestigate" ? "is-active" : ""} onClick={() => setDecision("reinvestigate")}>退回调查</button>
+        <button type="button" aria-pressed={decision === "reject"} className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>驳回事件</button>
       </fieldset>
       {!applicable ? (
         <div className="action-guard">
@@ -309,8 +351,8 @@ function RecheckForm({ actor, version, submitting, onSubmit }: FormSharedProps) 
       <ActionHeading title="复查整改" actor={actor} />
       <fieldset className="decision-tabs">
         <legend>复查决定</legend>
-        <button type="button" className={decision === "close" ? "is-active" : ""} onClick={() => setDecision("close")}>通过并关闭</button>
-        <button type="button" className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>退回整改</button>
+        <button type="button" aria-pressed={decision === "close"} className={decision === "close" ? "is-active" : ""} onClick={() => setDecision("close")}>通过并关闭</button>
+        <button type="button" aria-pressed={decision === "reject"} className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>退回整改</button>
       </fieldset>
       <label>
         <span>复查结论</span>
