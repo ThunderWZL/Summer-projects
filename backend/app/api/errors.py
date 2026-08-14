@@ -1,4 +1,5 @@
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.contracts import ErrorResponse
@@ -22,6 +23,18 @@ def error_response(
         current_version=current_version,
     )
     return JSONResponse(status_code=status_code, content=body.model_dump())
+
+
+async def request_validation_exception_handler(
+    request: Request,
+    error: RequestValidationError,
+) -> JSONResponse:
+    del request, error
+    return error_response(
+        status_code=422,
+        code="VALIDATION_ERROR",
+        message="request validation failed",
+    )
 
 
 async def case_workflow_exception_handler(
