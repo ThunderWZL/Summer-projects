@@ -309,7 +309,11 @@ class CaseEvidenceModel(Base):
         CheckConstraint(
             "timestamp_ms >= 0", name="ck_case_evidence_timestamp_nonnegative"
         ),
-        Index("ix_case_evidence_case_timestamp", "case_id", "timestamp_ms"),
+        UniqueConstraint(
+            "case_id",
+            "timestamp_ms",
+            name="uq_case_evidence_case_timestamp",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -345,7 +349,7 @@ class VlmReviewModel(Base):
 class InvestigationModel(Base):
     __tablename__ = "investigations"
     __table_args__ = (
-        Index("ix_investigations_case_id", "case_id"),
+        UniqueConstraint("case_id", name="uq_investigations_case_id"),
     )
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
