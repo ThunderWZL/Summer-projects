@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_video_analysis_port
 from app.api.errors import error_response
 from app.api.schemas import AnalysisSessionResponse, StartAnalysisSessionRequest
+from app.contracts import ErrorResponse
 from app.domain.video_analysis import (
     AnalysisSession,
     AnalysisSessionNotActive,
@@ -14,6 +15,28 @@ from app.domain.video_analysis import (
 
 
 router = APIRouter(prefix="/api/v1/analysis-sessions", tags=["analysis-sessions"])
+ERROR_RESPONSE_CONTENT = {"model": ErrorResponse}
+START_SESSION_RESPONSES = {
+    404: {**ERROR_RESPONSE_CONTENT, "description": "视频不存在"},
+    422: {**ERROR_RESPONSE_CONTENT, "description": "请求校验失败"},
+}
+STOP_SESSION_RESPONSES = {
+    404: {**ERROR_RESPONSE_CONTENT, "description": "分析会话不存在"},
+    422: {**ERROR_RESPONSE_CONTENT, "description": "请求校验失败"},
+}
+STREAM_RESPONSES = {
+    200: {
+        "description": "当前 MJPEG 标注流",
+        "content": {
+            "multipart/x-mixed-replace": {
+                "schema": {"type": "string", "format": "binary"}
+            }
+        },
+    },
+    404: {**ERROR_RESPONSE_CONTENT, "description": "分析会话不存在"},
+    409: {**ERROR_RESPONSE_CONTENT, "description": "分析会话不可取流"},
+    422: {**ERROR_RESPONSE_CONTENT, "description": "请求校验失败"},
+}
 
 
 def _response(session: AnalysisSession) -> AnalysisSessionResponse:
@@ -26,7 +49,12 @@ def _response(session: AnalysisSession) -> AnalysisSessionResponse:
     )
 
 
-@router.post("", response_model=AnalysisSessionResponse, status_code=201)
+@router.post(
+    "",
+    response_model=AnalysisSessionResponse,
+    status_code=201,
+    responses=START_SESSION_RESPONSES,
+)
 async def start_analysis_session(
     request: StartAnalysisSessionRequest,
     analysis: VideoAnalysisPort = Depends(get_video_analysis_port),
@@ -37,7 +65,11 @@ async def start_analysis_session(
         return error_response(404, error.code, str(error))
 
 
-@router.post("/{session_id}/stop", response_model=AnalysisSessionResponse)
+@router.post(
+    "/{session_id}/stop",
+    response_model=AnalysisSessionResponse,
+    responses=STOP_SESSION_RESPONSES,
+)
 async def stop_analysis_session(
     session_id: str,
     analysis: VideoAnalysisPort = Depends(get_video_analysis_port),
@@ -48,7 +80,11 @@ async def stop_analysis_session(
         return error_response(404, error.code, str(error))
 
 
-@router.get("/{session_id}/stream.mjpg")
+@router.get(
+    "/{session_id}/stream.mjpg",
+    response_class=StreamingResponse,
+    responses=STREAM_RESPONSES,
+)
 async def analysis_stream(
     session_id: str,
     analysis: VideoAnalysisPort = Depends(get_video_analysis_port),
