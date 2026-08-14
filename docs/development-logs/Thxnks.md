@@ -60,6 +60,7 @@
 ### 当日目标
 
 * 增强 X-01 调查快照与案件证据的数据库唯一约束，避免同一案件产生歧义数据。
+* 完成 X-02 SQLAlchemy `CaseStore`，以真实 SQLite 事务承载案件聚合查询与乐观并发提交。
 
 ### 开发记录
 
@@ -67,11 +68,16 @@
   * 完成：限制每个案件仅保存一份当前调查快照，并禁止同一案件出现重复时间戳的证据帧。
   * 实现：使用数据库唯一约束替换仅提供查询优化的普通索引，并增加 schema 反射回归测试。
   * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/adapters/database/test_models.py -q`，6 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest`，174 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。
+* 18:31 `feat(store): 实现SQLAlchemy事件仓储`
+  * 完成：实现案件创建、读取、筛选分页、按候选查询、人工提交记录和带乐观锁的聚合提交。
+  * 实现：在单个 SQLite 事务内原子更新快照、递增版本并追加状态变化；将完整案件聚合映射到冻结表结构，版本不匹配时返回 `StaleCaseVersion`。
+  * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/repositories/test_sqlalchemy_case_store.py -q`，4 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest`，280 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。项目未配置后端 lint 和类型检查命令，未运行。
 
 ### 问题与处理
 
 * 当前主工作区包含其他任务的未提交修改；使用独立 worktree 完成本次修复，未暂存或改动这些文件。
+* X-01 尚未合入 `dev`，X-02 从最新 `origin/dev` 建分支后合入已推送的 X-01 前置分支；完整历史确认双方存在共同祖先，合并无冲突。
 
 ### 后续计划
 
-* 跳过 X-02，继续实现 X-03 案件页面与 X-04 人工复核页面。
+* 将 X-02 分支交给 Thunder 接入 `CaseWorkflow` 与路由，并等待项目负责人在 `dev` 做集成验收。
