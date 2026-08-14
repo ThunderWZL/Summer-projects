@@ -1,0 +1,375 @@
+import { useMemo, useState } from "react";
+
+import { ROLE_LABELS } from "../cases/format";
+import type {
+  CaseCommand,
+  CaseDetailResponse,
+  DemoContext,
+  DemoUser,
+  JsonValue,
+} from "../cases/types";
+
+interface CaseActionPanelProps {
+  detail: CaseDetailResponse;
+  actor: DemoUser | null;
+  context: DemoContext | null;
+  submitting: boolean;
+  onSubmit: (command: CaseCommand) => Promise<void>;
+}
+
+export function CaseActionPanel({
+  detail,
+  actor,
+  context,
+  submitting,
+  onSubmit,
+}: CaseActionPanelProps) {
+  const snapshot = detail.snapshot;
+  const parties = useMemo(
+    () =>
+      (context?.responsible_parties ?? []).filter(
+        (party) => party.active && party.zone_id === detail.zone_id,
+      ),
+    [context, detail.zone_id],
+  );
+
+  if (!actor) {
+    return <ActionUnavailable text="角色目录尚未加载，当前不能提交人工命令。" />;
+  }
+
+  if (actor.role === "SITE_SAFETY_OFFICER") {
+    if (snapshot.status === "NEEDS_HUMAN_FACTS") {
+      return (
+        <FactsForm
+          actor={actor}
+          version={snapshot.version}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      );
+    }
+    if (snapshot.status === "RECTIFICATION_OPEN") {
+      return (
+        <EvidenceForm
+          actor={actor}
+          version={snapshot.version}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      );
+    }
+  }
+
+  if (actor.role === "PROJECT_SAFETY_REVIEWER") {
+    if (snapshot.status === "PENDING_REVIEW") {
+      return (
+        <ReviewForm
+          actor={actor}
+          detail={detail}
+          parties={parties}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      );
+    }
+    if (snapshot.status === "RECHECK_PENDING") {
+      return (
+        <RecheckForm
+          actor={actor}
+          version={snapshot.version}
+          submitting={submitting}
+          onSubmit={onSubmit}
+        />
+      );
+    }
+  }
+
+  return (
+    <ActionUnavailable
+      text={`${ROLE_LABELS[actor.role]}在“${snapshot.status}”状态下没有可执行命令。切换角色或等待流程进入下一节点。`}
+    />
+  );
+}
+
+function FactsForm({
+  actor,
+  version,
+  submitting,
+  onSubmit,
+}: FormSharedProps) {
+  const [taskCode, setTaskCode] = useState("");
+  const [siteNote, setSiteNote] = useState("");
+  const [reason, setReason] = useState("");
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const facts: Record<string, JsonValue> = {};
+    if (taskCode.trim()) facts.task_code = taskCode.trim();
+    if (siteNote.trim()) facts.site_note = siteNote.trim();
+    if (!Object.keys(facts).length) return;
+    await onSubmit({
+      command_type: "SUBMIT_FACTS",
+      actor_id: actor.actor_id,
+      expected_version: version,
+      reason: reason.trim(),
+      facts,
+    });
+  }
+
+  return (
+    <form className="action-form" onSubmit={handleSubmit}>
+      <ActionHeading title="补充现场事实" actor={actor} />
+      <p className="action-form__hint">只提交现场可确认的信息；PPE 适用性仍由确定性 resolver 判断。</p>
+      <label>
+        <span>任务代码</span>
+        <input value={taskCode} onChange={(event) => setTaskCode(event.target.value)} placeholder="例如 HOT_WORK_CUTTING" />
+      </label>
+      <label>
+        <span>现场补充说明</span>
+        <textarea value={siteNote} onChange={(event) => setSiteNote(event.target.value)} rows={3} placeholder="记录当前作业、许可或其他可核验事实" />
+      </label>
+      <ReasonField value={reason} onChange={setReason} />
+      <button className="action-primary" disabled={submitting || !reason.trim() || (!taskCode.trim() && !siteNote.trim())}>
+        {submitting ? "正在提交…" : "提交事实并重新调查"}
+      </button>
+    </form>
+  );
+}
+
+function EvidenceForm({
+  actor,
+  version,
+  submitting,
+  onSubmit,
+}: FormSharedProps) {
+  const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [capturedAt, setCapturedAt] = useState("");
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!capturedAt) return;
+    await onSubmit({
+      command_type: "SUBMIT_RECTIFICATION_EVIDENCE",
+      actor_id: actor.actor_id,
+      expected_version: version,
+      reason: reason.trim(),
+      description: description.trim(),
+      evidence: [
+        {
+          evidence_id: `manual-${crypto.randomUUID()}`,
+          image_url: imageUrl.trim(),
+          captured_at: new Date(capturedAt).toISOString(),
+          note: note.trim() || null,
+        },
+      ],
+    });
+  }
+
+  return (
+    <form className="action-form" onSubmit={handleSubmit}>
+      <ActionHeading title="提交整改证据" actor={actor} />
+      <label>
+        <span>整改说明</span>
+        <textarea required value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="说明采取了什么整改措施" />
+      </label>
+      <label>
+        <span>证据图片 URL</span>
+        <input required type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="https://…" />
+      </label>
+      <label>
+        <span>拍摄时间</span>
+        <input required type="datetime-local" value={capturedAt} onChange={(event) => setCapturedAt(event.target.value)} />
+      </label>
+      <label>
+        <span>图片备注（可选）</span>
+        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="拍摄位置或补充说明" />
+      </label>
+      <ReasonField value={reason} onChange={setReason} />
+      <button className="action-primary" disabled={submitting || !description.trim() || !imageUrl.trim() || !capturedAt || !reason.trim()}>
+        {submitting ? "正在提交…" : "提交并进入复查"}
+      </button>
+    </form>
+  );
+}
+
+function ReviewForm({
+  actor,
+  detail,
+  parties,
+  submitting,
+  onSubmit,
+}: {
+  actor: DemoUser;
+  detail: CaseDetailResponse;
+  parties: NonNullable<DemoContext>["responsible_parties"];
+  submitting: boolean;
+  onSubmit: (command: CaseCommand) => Promise<void>;
+}) {
+  const applicable = Boolean(
+    detail.snapshot.investigation?.required_ppe.includes(detail.snapshot.ppe_type),
+  );
+  const [decision, setDecision] = useState<"approve" | "reinvestigate" | "reject">(
+    applicable ? "approve" : "reinvestigate",
+  );
+  const recommendedPartyId =
+    detail.snapshot.investigation?.rectification_recommendation?.responsible_party_id ?? "";
+  const [partyId, setPartyId] = useState(
+    parties.some((party) => party.party_id === recommendedPartyId)
+      ? recommendedPartyId
+      : "",
+  );
+  const [dueAt, setDueAt] = useState("");
+  const [reason, setReason] = useState("");
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const shared = {
+      actor_id: actor.actor_id,
+      expected_version: detail.snapshot.version,
+      reason: reason.trim(),
+    };
+    if (decision === "approve") {
+      if (!dueAt) return;
+      await onSubmit({
+        command_type: "APPROVE_RECTIFICATION",
+        ...shared,
+        responsible_party_id: partyId,
+        rectification_due_at: new Date(dueAt).toISOString(),
+      });
+      return;
+    }
+    await onSubmit({
+      command_type: decision === "reject" ? "REJECT_CASE" : "REQUEST_REINVESTIGATION",
+      ...shared,
+    });
+  }
+
+  return (
+    <form className="action-form" onSubmit={handleSubmit}>
+      <ActionHeading title="项目审核" actor={actor} />
+      <fieldset className="decision-tabs">
+        <legend>审核决定</legend>
+        <button type="button" className={decision === "approve" ? "is-active" : ""} disabled={!applicable} onClick={() => setDecision("approve")}>批准整改</button>
+        <button type="button" className={decision === "reinvestigate" ? "is-active" : ""} onClick={() => setDecision("reinvestigate")}>退回调查</button>
+        <button type="button" className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>驳回事件</button>
+      </fieldset>
+      {!applicable ? (
+        <div className="action-guard">
+          当前调查未确认该 PPE 为任务必需项，因此不能批准整改。可退回调查或驳回事件。
+        </div>
+      ) : null}
+      {decision === "approve" ? (
+        <>
+          <label>
+            <span>整改责任主体</span>
+            <select required value={partyId} onChange={(event) => setPartyId(event.target.value)}>
+              <option value="">请选择</option>
+              {parties.map((party) => <option key={party.party_id} value={party.party_id}>{party.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>整改期限</span>
+            <input required type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+            <small>必须晚于服务端当前时间。</small>
+          </label>
+        </>
+      ) : null}
+      <ReasonField value={reason} onChange={setReason} label={decision === "approve" ? "审核理由" : "处理理由"} />
+      <button
+        className={decision === "reject" ? "action-danger" : "action-primary"}
+        disabled={submitting || !reason.trim() || (decision === "approve" && (!applicable || !partyId || !dueAt))}
+      >
+        {submitting ? "正在提交…" : decision === "approve" ? "确认批准整改" : decision === "reject" ? "确认驳回事件" : "确认退回调查"}
+      </button>
+    </form>
+  );
+}
+
+function RecheckForm({ actor, version, submitting, onSubmit }: FormSharedProps) {
+  const [decision, setDecision] = useState<"close" | "reject">("close");
+  const [conclusion, setConclusion] = useState("");
+  const [reason, setReason] = useState("");
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    await onSubmit({
+      command_type: decision === "close" ? "APPROVE_CLOSURE" : "REJECT_RECHECK",
+      actor_id: actor.actor_id,
+      expected_version: version,
+      reason: reason.trim(),
+      recheck_conclusion: conclusion.trim(),
+    });
+  }
+
+  return (
+    <form className="action-form" onSubmit={handleSubmit}>
+      <ActionHeading title="复查整改" actor={actor} />
+      <fieldset className="decision-tabs">
+        <legend>复查决定</legend>
+        <button type="button" className={decision === "close" ? "is-active" : ""} onClick={() => setDecision("close")}>通过并关闭</button>
+        <button type="button" className={decision === "reject" ? "is-active" : ""} onClick={() => setDecision("reject")}>退回整改</button>
+      </fieldset>
+      <label>
+        <span>复查结论</span>
+        <textarea required value={conclusion} onChange={(event) => setConclusion(event.target.value)} rows={4} placeholder="对照整改前后证据，记录复查结论" />
+      </label>
+      <ReasonField value={reason} onChange={setReason} />
+      <button className={decision === "close" ? "action-primary" : "action-danger"} disabled={submitting || !conclusion.trim() || !reason.trim()}>
+        {submitting ? "正在提交…" : decision === "close" ? "确认关闭事件" : "退回继续整改"}
+      </button>
+    </form>
+  );
+}
+
+interface FormSharedProps {
+  actor: DemoUser;
+  version: number;
+  submitting: boolean;
+  onSubmit: (command: CaseCommand) => Promise<void>;
+}
+
+function ActionHeading({ title, actor }: { title: string; actor: DemoUser }) {
+  return (
+    <div className="action-form__heading">
+      <div>
+        <span>ACTION / 人工命令</span>
+        <h3>{title}</h3>
+      </div>
+      <small>
+        {actor.name === ROLE_LABELS[actor.role]
+          ? actor.name
+          : `${actor.name} · ${ROLE_LABELS[actor.role]}`}
+      </small>
+    </div>
+  );
+}
+
+function ReasonField({
+  value,
+  onChange,
+  label = "操作理由",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label?: string;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <textarea required value={value} onChange={(event) => onChange(event.target.value)} rows={3} placeholder="说明判断依据，内容将进入审计时间线" />
+    </label>
+  );
+}
+
+function ActionUnavailable({ text }: { text: string }) {
+  return (
+    <div className="action-unavailable">
+      <span>CURRENT ROLE</span>
+      <h3>当前没有可执行操作</h3>
+      <p>{text}</p>
+    </div>
+  );
+}
