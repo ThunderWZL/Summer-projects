@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "test": "vitest run",
     "generate:contracts": "openapi-typescript http://localhost:8000/openapi.json -o src/generated/api.ts"
   },
   "dependencies": {
@@ -13,11 +14,14 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
     "openapi-typescript": "^7.6.1",
     "typescript": "^5.7.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   }
 }

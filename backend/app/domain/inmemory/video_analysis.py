@@ -3,12 +3,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 
-from app.contracts import AnalysisStage, CandidateCreatedPayload
-from app.domain.case_store import CaseQuery, CaseStorePort
+from app.contracts import (
+    AnalysisStage,
+    CandidateCreatedPayload,
+    CaseStatus,
+    CaseUpdatedPayload,
+    VlmReviewedPayload,
+)
+from app.domain.inmemory.fixture_candidates import candidate_for_video
 from app.domain.site_context import SiteContextPort
 from app.domain.video_analysis import AnalysisSession
-from app.modules.video_analysis.observation import SUPPORTED_PPE
 from app.services.session_manager import SessionManager
+from app.services.case_pipeline import CasePipeline
 
 
 _JPEG = (
@@ -19,13 +25,23 @@ _JPEG = (
     + b"\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\x00\xff\xd9"
 )
 
+_PIPELINE_ACTIONS = {
+    CaseStatus.INVESTIGATING: "START_INVESTIGATION",
+    CaseStatus.NEEDS_HUMAN_FACTS: "RECORD_INVESTIGATION",
+    CaseStatus.PENDING_REVIEW: "RECORD_INVESTIGATION",
+}
+
 
 class InMemoryVideoAnalysis:
-    """Deterministic demo analysis that reads fixtures without changing them."""
+    """Deterministic demo analysis that feeds fixtures through the case pipeline."""
 
-    def __init__(self, context: SiteContextPort, cases: CaseStorePort) -> None:
+    def __init__(
+        self,
+        context: SiteContextPort,
+        pipeline: CasePipeline,
+    ) -> None:
         self._context = context
-        self._cases = cases
+        self._pipeline = pipeline
 
     async def get_stream(self, session_id: str) -> AsyncIterator[bytes]:
         del session_id
@@ -58,17 +74,12 @@ class InMemoryVideoAnalysis:
             message="running deterministic demo inference",
             inference_fps=12.0,
         )
-        case = next(
-            (
-                item
-                for item in self._cases.list(CaseQuery(page_size=1_000_000)).items
-                if item.camera_id == video.camera_id
-                and item.ppe_type in SUPPORTED_PPE
-            ),
-            None,
-        )
-        if case is not None:
-            candidate = case.candidate
+        candidate = candidate_for_video(video, session.session_id)
+        if candidate is not None:
+            case = self._pipeline.ensure_case(candidate)
+            is_new_candidate = (
+                case.status is CaseStatus.YOLO_CANDIDATE and not case.transitions
+            )
             await manager.publish_candidate(
                 session.session_id,
                 case_id=case.case_id,
@@ -81,8 +92,35 @@ class InMemoryVideoAnalysis:
                 ),
                 playback_ms=candidate.last_seen_ms,
             )
+            result = await self._pipeline.process_candidate(candidate)
+            if is_new_candidate and result.vlm_review is not None:
+                await manager.publish_vlm_reviewed(
+                    session.session_id,
+                    case_id=result.case_id,
+                    payload=VlmReviewedPayload(
+                        verdict=result.vlm_review.verdict,
+                        evidence_sufficient=result.vlm_review.evidence_sufficient,
+                        reason=result.vlm_review.reason,
+                        status=result.transitions[0].to_status,
+                        version=2,
+                    ),
+                    playback_ms=candidate.last_seen_ms,
+                )
+                for version, transition in enumerate(result.transitions[1:], start=3):
+                    await manager.publish_case_updated(
+                        session.session_id,
+                        case_id=result.case_id,
+                        payload=CaseUpdatedPayload(
+                            status=transition.to_status,
+                            version=version,
+                            updated_at=transition.occurred_at,
+                            action=_PIPELINE_ACTIONS[transition.to_status],
+                        ),
+                        playback_ms=candidate.last_seen_ms,
+                    )
+        case_count = 1 if candidate is not None else 0
         await manager.finish_session(
             session.session_id,
-            candidate_count=1 if case is not None else 0,
-            case_count=1 if case is not None else 0,
+            candidate_count=case_count,
+            case_count=case_count,
         )

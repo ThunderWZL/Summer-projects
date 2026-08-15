@@ -10,25 +10,31 @@ def make_candidate(
     *,
     confidence: float = 0.91,
     evidence_kind: str = "NEGATIVE_CLASS_DETECTION",
+    ppe_type: str = "helmet",
+    frame_roles: tuple[str, ...] = ("REPRESENTATIVE",),
+    negative_observation: bool = True,
 ) -> CandidateEvidence:
-    frame: dict = {
-        "timestamp_ms": 1_500,
-        "image_url": "/evidence/candidate-01/key.jpg",
-        "image_width": 1920,
-        "image_height": 1080,
-        "frame_role": "REPRESENTATIVE",
-        "person_box": {"x1": 10, "y1": 20, "x2": 110, "y2": 220},
-    }
-    if evidence_kind == "NEGATIVE_CLASS_DETECTION":
-        frame["observation_box"] = {"x1": 30, "y1": 20, "x2": 80, "y2": 60}
-        frame["observation_confidence"] = 0.93
+    frames = []
+    for index, role in enumerate(frame_roles):
+        frame: dict = {
+            "timestamp_ms": 1_000 + index * 500,
+            "image_url": f"/evidence/candidate-01/{role.lower()}.jpg",
+            "image_width": 1920,
+            "image_height": 1080,
+            "frame_role": role,
+            "person_box": {"x1": 10, "y1": 20, "x2": 110, "y2": 220},
+        }
+        if evidence_kind == "NEGATIVE_CLASS_DETECTION" and negative_observation:
+            frame["observation_box"] = {"x1": 30, "y1": 20, "x2": 80, "y2": 60}
+            frame["observation_confidence"] = 0.93
+        frames.append(frame)
     return CandidateEvidence.model_validate(
         {
             "candidate_id": "candidate-01",
             "session_id": "session-01",
             "camera_id": "CAM-01",
             "person_track_id": "track-17",
-            "ppe_type": "helmet",
+            "ppe_type": ppe_type,
             "evidence_kind": evidence_kind,
             "confidence": confidence,
             "model_name": "ppe-yolo",
@@ -38,7 +44,7 @@ def make_candidate(
             "occurred_at": "2026-08-07T10:31:24+08:00",
             "first_seen_ms": 1_000,
             "last_seen_ms": 2_000,
-            "frames": [frame],
+            "frames": frames,
         }
     )
 
@@ -76,17 +82,58 @@ def test_auto_rejects_low_confidence() -> None:
     assert payload["evidence_sufficient"] is False
 
 
-def test_auto_rejects_missing_observation() -> None:
+def test_auto_confirms_three_frame_missing_positive_association_for_gloves() -> None:
     response = asyncio.run(
         complete(
-            make_candidate(evidence_kind="MISSING_POSITIVE_ASSOCIATION"),
+            make_candidate(
+                evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+                ppe_type="gloves",
+                frame_roles=("BEFORE", "REPRESENTATIVE", "AFTER"),
+            ),
             FixedVlmScenario.AUTO,
         )
     )
 
     payload = json.loads(response.content)
-    assert payload["verdict"] == "REJECTED"
-    assert "证据不足" in payload["reason"]
+    assert (payload["verdict"], payload["evidence_sufficient"]) == (
+        "CONFIRMED",
+        True,
+    )
+
+
+def test_auto_confirms_three_frame_missing_positive_association_for_vest() -> None:
+    response = asyncio.run(
+        complete(
+            make_candidate(
+                evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+                ppe_type="vest",
+                frame_roles=("BEFORE", "REPRESENTATIVE", "AFTER"),
+            ),
+            FixedVlmScenario.AUTO,
+        )
+    )
+
+    payload = json.loads(response.content)
+    assert (payload["verdict"], payload["persistent"]) == ("CONFIRMED", True)
+
+
+def test_auto_rejects_missing_positive_association_with_a_missing_frame() -> None:
+    response = asyncio.run(
+        complete(
+            make_candidate(
+                evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+                ppe_type="gloves",
+                frame_roles=("REPRESENTATIVE", "AFTER"),
+            ),
+            FixedVlmScenario.AUTO,
+        )
+    )
+
+    payload = json.loads(response.content)
+    assert (payload["verdict"], payload["evidence_sufficient"]) == (
+        "REJECTED",
+        False,
+    )
 
 
 def test_confirm_scenario_forces_confirmed() -> None:
@@ -117,6 +164,44 @@ def test_uncertain_scenario_returns_uncertain() -> None:
     payload = json.loads(response.content)
     assert payload["verdict"] == "UNCERTAIN"
     assert payload["evidence_sufficient"] is False
+
+
+def test_uncertain_scenario_overrides_otherwise_sufficient_three_frame_evidence() -> None:
+    response = asyncio.run(
+        complete(
+            make_candidate(
+                evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+                ppe_type="gloves",
+                frame_roles=("BEFORE", "REPRESENTATIVE", "AFTER"),
+            ),
+            FixedVlmScenario.UNCERTAIN,
+        )
+    )
+
+    payload = json.loads(response.content)
+    assert (payload["verdict"], payload["association"], payload["persistent"]) == (
+        "UNCERTAIN",
+        "AMBIGUOUS",
+        False,
+    )
+
+
+def test_negative_class_without_representative_observation_is_insufficient() -> None:
+    valid_missing = make_candidate(
+        evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+        frame_roles=("REPRESENTATIVE",),
+    )
+    malformed_negative = valid_missing.model_copy(
+        update={"evidence_kind": "NEGATIVE_CLASS_DETECTION"}
+    )
+
+    response = asyncio.run(complete(malformed_negative, FixedVlmScenario.AUTO))
+
+    payload = json.loads(response.content)
+    assert (payload["verdict"], payload["evidence_sufficient"]) == (
+        "REJECTED",
+        False,
+    )
 
 
 def test_same_candidate_always_produces_identical_output() -> None:

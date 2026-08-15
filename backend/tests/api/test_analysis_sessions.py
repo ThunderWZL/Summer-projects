@@ -4,9 +4,11 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
     get_case_store,
+    get_case_pipeline,
     get_event_hub,
     get_inmemory_video_analysis,
     get_session_manager,
+    get_investigation_port,
 )
 from app.main import app
 
@@ -15,6 +17,8 @@ def setup_function() -> None:
     get_session_manager.cache_clear()
     get_inmemory_video_analysis.cache_clear()
     get_event_hub.cache_clear()
+    get_case_pipeline.cache_clear()
+    get_investigation_port.cache_clear()
     get_case_store.cache_clear()
 
 
@@ -170,6 +174,55 @@ def test_finished_fake_session_stream_remains_available_until_stop() -> None:
 
     assert response.status_code == 200
     assert response.content.startswith(b"--frame\r\nContent-Type: image/jpeg")
+
+
+def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
+    async def scenario():
+        start = await request(
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+        )
+        session_id = start.json()["session_id"]
+        events = get_session_manager().subscribe_events(session_id)
+        received = []
+        while True:
+            event = await anext(events)
+            received.append(event)
+            if event.event_type.value == "SESSION_FINISHED":
+                break
+        await events.aclose()
+        created = next(
+            event for event in received if event.event_type.value == "CANDIDATE_CREATED"
+        )
+        detail = await request("GET", f"/api/v1/cases/{created.case_id}")
+        return created, received, detail
+
+    created, received, detail = asyncio.run(scenario())
+    finished = received[-1]
+
+    assert created.case_id
+    assert [event.event_type.value for event in received] == [
+        "SESSION_PROGRESS",
+        "SESSION_PROGRESS",
+        "SESSION_PROGRESS",
+        "CANDIDATE_CREATED",
+        "VLM_REVIEWED",
+        "CASE_UPDATED",
+        "CASE_UPDATED",
+        "SESSION_FINISHED",
+    ]
+    assert received[4].payload.status == "VLM_REVIEWED"
+    assert received[4].payload.version == 2
+    assert [event.payload.status for event in received[5:7]] == [
+        "INVESTIGATING",
+        "PENDING_REVIEW",
+    ]
+    assert [event.payload.version for event in received[5:7]] == [3, 4]
+    assert (finished.payload.candidate_count, finished.payload.case_count) == (1, 1)
+    assert detail.status_code == 200
+    assert detail.json()["snapshot"]["case_id"] == created.case_id
+    assert detail.json()["snapshot"]["candidate"]["candidate_id"] == (
+        created.payload.candidate_id
+    )
 
 
 def test_analysis_session_openapi_freezes_success_and_error_responses() -> None:
