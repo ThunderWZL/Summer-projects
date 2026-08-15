@@ -24,6 +24,7 @@ from app.domain.case_workflow import (
     CommandNotAllowed,
     EvidenceRequired,
     InvalidDeadline,
+    PpeNotRequired,
     PermissionDenied,
     RecordInvestigation,
     RecordVlmReview,
@@ -37,14 +38,22 @@ from app.domain.case_workflow import (
 NOW = datetime.fromisoformat("2026-08-07T10:40:00+08:00")
 
 
-def make_case(status: CaseStatus, version: int = 1) -> CaseSnapshot:
+def make_case(
+    status: CaseStatus,
+    version: int = 1,
+    *,
+    camera_id: str = "CAM-01",
+    ppe_type: str = "helmet",
+    required_ppe: list[str] | None = None,
+    investigation_present: bool | None = None,
+) -> CaseSnapshot:
     candidate = CandidateEvidence.model_validate(
         {
             "candidate_id": "candidate-01",
             "session_id": "session-01",
-            "camera_id": "CAM-01",
+            "camera_id": camera_id,
             "person_track_id": "track-17",
-            "ppe_type": "helmet",
+            "ppe_type": ppe_type,
             "evidence_kind": "NEGATIVE_CLASS_DETECTION",
             "confidence": 0.91,
             "model_name": "ppe-yolo",
@@ -78,15 +87,39 @@ def make_case(status: CaseStatus, version: int = 1) -> CaseSnapshot:
             ],
         }
     )
+    if investigation_present is None:
+        investigation_present = status is CaseStatus.PENDING_REVIEW
+    investigation = None
+    if investigation_present:
+        investigation = InvestigationResult(
+            facts={"task_code": "TEST_TASK"},
+            conflicts=[],
+            missing_fields=[],
+            applicable_task="TEST_TASK",
+            hazards=["测试危害"],
+            required_ppe=required_ppe if required_ppe is not None else [ppe_type],
+            recommendation="进入人工审核",
+            rectification_recommendation=None,
+            citations=[
+                {
+                    "document_title": "测试依据",
+                    "section": "PPE",
+                    "source_url": "https://example.test/ppe",
+                    "excerpt": "测试任务应按风险配备 PPE。",
+                }
+            ],
+            tool_trace=[],
+        )
     return CaseSnapshot(
         case_id="case-01",
         session_id="session-01",
-        camera_id="CAM-01",
+        camera_id=camera_id,
         person_track_id="track-17",
-        ppe_type="helmet",
+        ppe_type=ppe_type,
         status=status,
         version=version,
         candidate=candidate,
+        investigation=investigation,
         created_at=candidate.occurred_at,
         updated_at=candidate.occurred_at,
     )
@@ -124,12 +157,16 @@ class FixedActorRoles:
         }.get(actor_id)
 
 
-def make_workflow(case: CaseSnapshot) -> CaseWorkflow:
+def make_workflow(
+    case: CaseSnapshot,
+    *,
+    eligible=lambda _snapshot, _party_id: True,
+) -> CaseWorkflow:
     return CaseWorkflow(
         store=MemoryCaseStore(case),
         actor_roles=FixedActorRoles(),
         clock=lambda: NOW,
-        responsible_party_is_eligible=lambda snapshot, party_id: True,
+        responsible_party_is_eligible=eligible,
     )
 
 
@@ -217,6 +254,92 @@ def test_reviewer_can_approve_rectification_with_owner_and_deadline() -> None:
         "team-electric-01",
         datetime.fromisoformat("2026-08-08T18:00:00+08:00"),
     )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        make_case(
+            CaseStatus.PENDING_REVIEW,
+            version=3,
+            investigation_present=False,
+        ),
+        make_case(
+            CaseStatus.PENDING_REVIEW,
+            version=3,
+            required_ppe=["vest"],
+        ),
+    ],
+    ids=["no-investigation", "candidate-ppe-not-required"],
+)
+def test_approval_rejects_non_applicable_ppe_without_mutating_case(case) -> None:
+    store = MemoryCaseStore(case)
+    workflow = CaseWorkflow(
+        store=store,
+        actor_roles=FixedActorRoles(),
+        clock=lambda: NOW,
+        responsible_party_is_eligible=lambda _snapshot, _party_id: False,
+    )
+    command = ApproveRectification(
+        actor_id="reviewer-01",
+        expected_version=3,
+        reason="尝试批准不适用的整改",
+        responsible_party_id="invalid-party",
+        rectification_due_at="2026-08-07T09:00:00+08:00",
+    )
+
+    with pytest.raises(PpeNotRequired, match="not required"):
+        workflow.apply(case.case_id, command)
+
+    assert store.case == case
+    assert (store.case.status, store.case.version, store.case.transitions) == (
+        CaseStatus.PENDING_REVIEW,
+        3,
+        [],
+    )
+
+
+def test_cam03_gloves_can_be_approved_but_cam04_gloves_cannot() -> None:
+    command = ApproveRectification(
+        actor_id="reviewer-01",
+        expected_version=4,
+        reason="审核业务适用性",
+        responsible_party_id="team-structure-01",
+        rectification_due_at="2026-08-08T18:00:00+08:00",
+    )
+    cam03 = make_workflow(
+        make_case(
+            CaseStatus.PENDING_REVIEW,
+            4,
+            camera_id="CAM-03",
+            ppe_type="gloves",
+            required_ppe=["gloves"],
+        )
+    )
+    cam04_case = make_case(
+        CaseStatus.PENDING_REVIEW,
+        4,
+        camera_id="CAM-04",
+        ppe_type="gloves",
+        required_ppe=["helmet"],
+    )
+    cam04_store = MemoryCaseStore(cam04_case)
+    cam04 = CaseWorkflow(
+        store=cam04_store,
+        actor_roles=FixedActorRoles(),
+        clock=lambda: NOW,
+        responsible_party_is_eligible=lambda _snapshot, _party_id: True,
+    )
+
+    approved = cam03.apply("case-01", command)
+    with pytest.raises(PpeNotRequired, match="not required"):
+        cam04.apply("case-01", command)
+
+    assert (approved.status, approved.version) == (
+        CaseStatus.RECTIFICATION_OPEN,
+        5,
+    )
+    assert cam04_store.case == cam04_case
 
 
 @pytest.mark.parametrize(

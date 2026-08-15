@@ -135,6 +135,13 @@ cd backend
 
 ### 前端检查
 
+运行前端测试：
+
+```bash
+cd frontend
+npm run test
+```
+
 运行前端类型检查和生产构建：
 
 ```bash
@@ -142,7 +149,7 @@ cd frontend
 npm run build
 ```
 
-* 当前未配置前端测试和 lint 命令。
+* 当前未配置前端 lint 命令。
 * 禁止自行虚构或替换未配置的检查命令。
 * 修改 OpenAPI 或前端共享请求响应契约时，先启动后端，再执行 `cd frontend && npm run generate:contracts`，随后运行生产构建。
 

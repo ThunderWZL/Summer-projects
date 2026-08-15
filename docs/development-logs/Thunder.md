@@ -341,3 +341,43 @@
 ### 后续计划
 
 * 推送 `feat/analysis-sessions` 任务分支，交由项目负责人验收；真实视频推理接线等待对应模块交付。
+
+## 2026-08-15
+
+### 当日目标
+
+* 完成切片七六路实时监控台、分析通道切换、实时事件计数和连接失败重试，并验证前后端共享契约。
+* 完成切片八确定性案件流水线与六路演示闭环，验证候选、复核、调查、人工处置和关闭链路。
+
+### 开发记录
+
+* 00:53 `feat(frontend): 实现六路实时监控台`
+  * 完成：实现响应式 2×3 视频墙、六路预览、单活动分析会话、换路确认、MJPEG 标注画面、角色切换及显式断线重试。
+  * 实现：封装演示目录与会话 REST、严格校验并按 sequence 去重 WebSocket 事件；候选数仅采用 `SESSION_PROGRESS` 和 `SESSION_FINISHED` 权威计数；状态机隔离过期会话事件，并处理 StrictMode 加载、重复启动和终态连接释放。
+  * 验证：`cd frontend && npm run test`，7 个测试文件共 33 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest tests/api/test_demo_api.py tests/api/test_analysis_sessions.py`，11 项通过；`git diff --check`，通过；前端未配置 lint，未运行。
+
+* 02:11 `feat(pipeline): 实现确定性案件闭环`
+  * 完成：实现候选建案、VLM 复核、确定性调查、人工补事实后自动重调查，以及六路演示从候选到关闭的后端闭环。
+  * 实现：增加三帧候选夹具和幂等流水线；按冻结契约区分语义拒绝与技术失败，复用 resolver 生成 PPE 适用性，落实不适用审批守卫、统计过滤和会话权威计数。
+  * 验证：`cd backend && PYTHONPATH=/tmp/siteppe-case-pipeline/backend /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，313 项通过、1 项跳过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 02:12 `feat(frontend): 串联监控与案件闭环`
+  * 完成：在统一应用壳内串联监控台、案件列表和案件详情，并由顶层统一维护演示角色和案件路由。
+  * 实现：采用 Hash 路由保持静态部署兼容，监控与案件工作区常驻挂载以保留分析状态；复用共享 API 类型和演示上下文，移除重复导航、角色选择与演示上下文请求实现。
+  * 验证：`cd frontend && npm run test`，9 个测试文件共 42 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json src/App.tsx src/styles.css src/features/cases/CasesWorkspace.tsx src/features/cases/case-center.css src/features/review/case-detail.css`，无前端反模式发现；`git diff --check`，通过；前端未配置 lint，未运行。
+
+* 02:22 `fix(integration): 对齐切片八冻结契约`
+  * 完成：修正 CAM-02 六路语义，补发 VLM 与 Case 状态实时事件，并用独立事实上下文验证版本 1 至 10 的完整关闭链路。
+  * 实现：移除非白名单 `site_note` 特判；按实际迁移发布 `VLM_REVIEWED` 和 `CASE_UPDATED` 摘要；更新 OpenAPI 生成类型及前端测试命令说明。
+  * 验证：`cd backend && PYTHONPATH=/tmp/siteppe-case-pipeline/backend /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，313 项通过、1 项跳过；`cd frontend && npm run generate:contracts`，生成成功；`cd frontend && npm run test`，9 个测试文件共 42 项通过；`cd frontend && npm run build`，类型检查和生产构建通过；`git diff --check`，通过；前后端均未配置 lint，未运行。
+
+### 问题与处理
+
+* 回归测试发现 StrictMode 首次加载失效、首次启动失败无提示、重复 POST 和会话终态未关闭 WebSocket；已修复并增加对应行为测试。
+* `npm audit` 报告 3 个既有开发依赖链 high 漏洞，来自 `js-yaml 4.3.0` 和 `nanoid 3.3.17`；`npm audit --omit=dev` 确认生产依赖 0 个漏洞，本切片未越界升级既有依赖。
+* 切片八首轮回归发现 `VLM_REJECTED` 被计入高频风险、CAM-04 遗留整改提交、离线调查缺少引用导致 CAM-02 无法闭环；已分别修正统计口径、夹具状态和离线权威引用，并补充回归测试。
+* 双轴审查发现 CAM-02 被错误强制进入补事实状态、流水线未发送状态事件、OpenAPI 类型未生成和项目命令说明过期；已逐项修正。首次契约生成因沙箱禁止访问本机端口失败，授权本机访问后同一命令成功。
+
+### 后续计划
+
+* 推送审查修正后的 `feat/case-pipeline`，交由项目负责人进行集成验收。

@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, Field
 from app.api.deps import (
     Clock,
     get_case_store,
+    get_case_pipeline,
     get_case_workflow,
     get_clock,
     get_site_context,
@@ -43,6 +44,7 @@ from app.contracts import (
 )
 from app.domain.case_store import CaseQuery, CaseStorePort
 from app.domain.case_workflow import CaseWorkflow
+from app.services.case_pipeline import CasePipeline
 from app.domain.site_context import (
     ResponsibleParty,
     SiteContextPort,
@@ -70,6 +72,7 @@ WORKFLOW_ERROR_RESPONSES = {
     403: {"model": ErrorResponse, "description": "当前角色无权执行命令"},
     404: {"model": ErrorResponse, "description": "事件不存在"},
     409: {"model": ErrorResponse, "description": "事件版本冲突"},
+    422: {"model": ErrorResponse, "description": "个人防护装备不适用"},
 }
 ReviewCommand = Annotated[
     ApproveRectification | RejectCase | RequestReinvestigation,
@@ -201,7 +204,14 @@ def list_cases(
         )
 
     repeat_counts = Counter(
-        (zones[case.camera_id].zone_id, case.ppe_type) for case in all_cases
+        (zones[case.camera_id].zone_id, case.ppe_type)
+        for case in all_cases
+        if case.status
+        not in {CaseStatus.YOLO_CANDIDATE, CaseStatus.VLM_REJECTED}
+        and case.vlm_review is not None
+        and case.vlm_review.verdict.value == "CONFIRMED"
+        and case.investigation is not None
+        and case.ppe_type in case.investigation.required_ppe
     )
     repeat_risk = None
     if repeat_counts:
@@ -360,6 +370,7 @@ def submit_facts(
     workflow: CaseWorkflow = Depends(get_case_workflow),
     store: CaseStorePort = Depends(get_case_store),
     users: UserDirectoryPort = Depends(get_user_directory),
+    pipeline: CasePipeline = Depends(get_case_pipeline),
 ) -> CaseCommandResponse:
     snapshot = workflow.apply(case_id, command)
     user = users.get(command.actor_id)
@@ -376,6 +387,7 @@ def submit_facts(
                 created_at=snapshot.updated_at,
             )
         )
+    snapshot = pipeline.resume_investigation(case_id)
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
 
@@ -388,8 +400,11 @@ def review_case(
     case_id: str,
     command: ReviewCommand,
     workflow: CaseWorkflow = Depends(get_case_workflow),
+    pipeline: CasePipeline = Depends(get_case_pipeline),
 ) -> CaseCommandResponse:
     snapshot = workflow.apply(case_id, command)
+    if isinstance(command, RequestReinvestigation):
+        snapshot = pipeline.resume_investigation(case_id)
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
 

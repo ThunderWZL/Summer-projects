@@ -7,6 +7,7 @@ from app.domain.case_workflow import (
     CaseNotFound,
     CaseWorkflowError,
     PermissionDenied,
+    PpeNotRequired,
     StaleCaseVersion,
 )
 
@@ -47,6 +48,8 @@ async def case_workflow_exception_handler(
         status_code = 409
     elif isinstance(error, PermissionDenied):
         status_code = 403
+    elif isinstance(error, PpeNotRequired):
+        status_code = 422
     else:
         status_code = 400
     current_version = (

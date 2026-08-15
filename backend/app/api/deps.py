@@ -13,6 +13,10 @@ from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.inmemory.video_analysis import InMemoryVideoAnalysis
+from app.domain.inmemory.fake_investigation import (
+    FixtureInvestigation,
+    FixtureRequirementRetriever,
+)
 from app.domain.site_context import SiteContextPort, UserDirectoryPort
 from app.domain.video_analysis import VideoAnalysisPort
 from app.modules.requirements_rag.embedding import (
@@ -27,6 +31,9 @@ from app.modules.investigation.agent import DeepSeekChatModelAdapter, Investigat
 from app.modules.investigation.fake import FixedInvestigationAgent
 from app.modules.investigation.service import InvestigationService
 from app.modules.investigation.tools import InvestigationTools
+from app.modules.vlm_review.adapters.fixed import FixedVlmAdapter
+from app.modules.vlm_review.service import VlmReviewService
+from app.services.case_pipeline import CasePipeline
 from app.config import get_settings
 from app.services.event_hub import EventHub
 from app.services.session_manager import SessionManager
@@ -66,7 +73,7 @@ def get_event_hub() -> EventHub:
 
 @lru_cache
 def get_inmemory_video_analysis() -> InMemoryVideoAnalysis:
-    return InMemoryVideoAnalysis(get_site_context(), get_case_store())
+    return InMemoryVideoAnalysis(get_site_context(), get_case_pipeline())
 
 
 @lru_cache
@@ -143,11 +150,25 @@ def get_investigation_port() -> InvestigationPort:
     )
 
 
-def get_case_workflow(
-    store: CaseStorePort = Depends(get_case_store),
-    users: UserDirectoryPort = Depends(get_user_directory),
-    context: SiteContextPort = Depends(get_site_context),
-    clock: Clock = Depends(get_clock),
+def get_fixture_investigation_port() -> InvestigationPort:
+    store = get_case_store()
+    tools = InvestigationTools(
+        get_site_context(),
+        FixtureRequirementRetriever(),
+    )
+    delegate = InvestigationService(
+        store,
+        get_investigation_resolver(),
+        FixedInvestigationAgent(tools),
+    )
+    return FixtureInvestigation(delegate)
+
+
+def build_case_workflow(
+    store: CaseStorePort,
+    users: UserDirectoryPort,
+    context: SiteContextPort,
+    clock: Clock,
 ) -> CaseWorkflow:
     def responsible_party_is_eligible(snapshot, party_id: str) -> bool:
         zone = context.get_zone_at(snapshot.camera_id)
@@ -167,3 +188,41 @@ def get_case_workflow(
         clock=clock,
         responsible_party_is_eligible=responsible_party_is_eligible,
     )
+
+
+@lru_cache
+def get_case_pipeline() -> CasePipeline:
+    store = get_case_store()
+    clock = get_clock()
+    workflow = build_case_workflow(
+        store,
+        get_user_directory(),
+        get_site_context(),
+        clock,
+    )
+    settings = get_settings()
+    vlm = VlmReviewService(
+        store,
+        FixedVlmAdapter(),
+        workflow,
+        model_provider="fixture",
+        model_parameters={"temperature": 0},
+        clock=clock,
+        max_retries=settings.vlm_max_retries,
+        retry_delay_seconds=settings.vlm_retry_delay_seconds,
+    )
+    return CasePipeline(
+        store,
+        workflow,
+        vlm,
+        get_fixture_investigation_port(),
+    )
+
+
+def get_case_workflow(
+    store: CaseStorePort = Depends(get_case_store),
+    users: UserDirectoryPort = Depends(get_user_directory),
+    context: SiteContextPort = Depends(get_site_context),
+    clock: Clock = Depends(get_clock),
+) -> CaseWorkflow:
+    return build_case_workflow(store, users, context, clock)
