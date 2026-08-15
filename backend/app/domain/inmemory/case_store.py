@@ -44,6 +44,7 @@ class InMemoryCaseStore:
         snapshot: CaseSnapshot,
         expected_version: int,
         transition: CaseTransition,
+        submission: HumanSubmissionRecord | None = None,
     ) -> CaseSnapshot:
         current = self._cases[snapshot.case_id]
         if current.version != expected_version:
@@ -57,6 +58,8 @@ class InMemoryCaseStore:
             deep=True,
         )
         self._cases[snapshot.case_id] = committed
+        if submission is not None:
+            self._submissions.append(submission.model_copy(deep=True))
         return committed.model_copy(deep=True)
 
     def find_by_candidate(self, candidate_id: str) -> CaseSnapshot | None:

@@ -59,7 +59,9 @@
 
 ### 当日目标
 
-* 增强 X-01 数据唯一约束，并跳过 X-02 完成 X-03 事件中心与 X-04 事件详情，供项目负责人联调。
+* 增强 X-01 调查快照与案件证据的数据库唯一约束，避免同一案件产生歧义数据。
+* 完成 X-02 SQLAlchemy `CaseStore`，以真实 SQLite 事务承载案件聚合查询与乐观并发提交。
+* 完成 X-03 事件中心与 X-04 事件详情，供项目负责人联调。
 
 ### 开发记录
 
@@ -67,6 +69,10 @@
   * 完成：限制每个案件仅保存一份当前调查快照，并禁止同一案件出现重复时间戳的证据帧。
   * 实现：使用数据库唯一约束替换仅提供查询优化的普通索引，并增加 schema 反射回归测试。
   * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/adapters/database/test_models.py -q`，6 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest`，174 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。
+* 18:31 `feat(store): 实现SQLAlchemy事件仓储`
+  * 完成：实现案件创建、读取、筛选分页、按候选查询、人工提交记录和带乐观锁的聚合提交。
+  * 实现：在单个 SQLite 事务内原子更新快照、递增版本并追加状态变化；将完整案件聚合映射到冻结表结构，版本不匹配时返回 `StaleCaseVersion`。
+  * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/repositories/test_sqlalchemy_case_store.py -q`，4 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest`，280 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。项目未配置后端 lint 和类型检查命令，未运行。
 * 12:24 `feat(frontend): 实现事件中心与详情闭环`
   * 完成：实现事件统计、URL 筛选、分页、列表页面状态、证据链、VLM 与调查结果、引用、人工历史、时间线及按角色展示的业务命令表单。
   * 实现：提供 `CasesWorkspace` 独立挂载入口，使用 REST 快照刷新和版本冲突重载；视觉采用低动效、中高密度、深色矿物底与单一警示金色，避免渐变光效和嵌套卡片。
@@ -79,10 +85,34 @@
 ### 问题与处理
 
 * 当前主工作区包含其他任务的未提交修改；数据库与前端均使用独立 worktree，未暂存或改动这些文件。
+* X-01 尚未合入 `dev`时，X-02 从当时最新 `origin/dev` 建分支后合入已推送的 X-01 前置分支。
 * 最新 `dev` 尚未包含 Thxnks 日志，因此从已推送的 X-01 分支同步真实历史记录后追加本次前端记录；未补造开发日期。
 * fixture 证据图片 URL 当前不可访问；详情页保留帧元数据并提供明确的失败和重试状态，未用虚假图片替代。
 * 当前工作区缺少项目负责人私发的 AI 共享契约副本；使用最后一版受控总体设计与最新 `origin/dev` 契约、REST 路由核对。列表契约仍未提供证据缩略图、匿名轨迹和适用任务，时间线契约也没有独立 RAG 来源与引用时间；未在前端伪造字段或增加 N+1 详情请求，待 Thunder 对齐共享契约。
 
 ### 后续计划
 
-* 由 Thunder 补齐列表与时间线契约缺口，在 `frontend/src/App.tsx` 挂载 `CasesWorkspace`，并完成监控台与事件页面整合。
+* 由 Thunder 补齐列表与时间线契约缺口，在 `frontend/src/App.tsx` 挂载 `CasesWorkspace`，并完成监控台与事件页面整合；数据库 adapter 等待集成验收。
+
+## 2026-08-15
+
+### 当日目标
+
+* 将 SQLAlchemy 案件仓储合入最新 `dev`，并保证人工命令的状态、迁移记录与提交审计在同一事务内落库。
+
+### 开发记录
+
+* 17:53 `fix(store): 原子提交人工审计与状态迁移`
+  * 完成：解决 SQLAlchemy 案件仓储分支与最新 `dev` 的日志冲突，并将人工事实和整改证据的快照更新、状态迁移与提交审计收敛到一次仓储提交。
+  * 实现：扩展 `CaseStorePort.commit` 接收可选人工提交，SQLAlchemy adapter 在同一 `session_scope` 中写入案件、transition 和 submission；workflow 对两类人工命令强制审计记录并对齐时间，同步实现内存 adapter 语义。
+  * 验证：`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest tests/domain/test_case_workflow.py tests/domain/test_inmemory_case_store.py tests/api/test_cases_api.py tests/repositories/test_sqlalchemy_case_store.py tests/domain/test_case_store_port.py -q`，60 项通过；`D:\24269\coding\Summer-projects\backend\.venv\Scripts\python.exe -m pytest --basetemp=C:\Users\24269\AppData\Local\Temp\codex-case-txn-pytest-20260815-final2`，336 项通过、1 项因需要真实 RAG 凭据跳过；`git diff --check`，通过。项目未配置后端 lint 和类型检查命令，未运行。
+
+### 问题与处理
+
+* 首次完整测试因系统默认 pytest 临时目录无访问权限产生 26 个 setup error；改用本任务独立 `--basetemp` 后全部通过。
+* 人工跨模型 review 确认 SQLAlchemy 事务边界成立，并指出 workflow 可空审计路径与测试缺口；已强制人工审计不变式，补齐失败回滚、时间对齐、内存落库和未知用户 403 回归。
+* 当前副本不包含项目负责人私发的 AI 共享契约，且回退契约文件不存在；依据现有错误映射与前端 active user 调用链确认未知用户拒绝语义。
+
+### 后续计划
+
+* 推送任务分支并交由项目负责人在 `dev` 完成集成验收。

@@ -166,6 +166,39 @@ def test_human_submissions_are_recorded_in_creation_order_and_isolated() -> None
     assert submissions[0].facts == {"team": "电气班组"}
 
 
+def test_commit_records_transition_and_submission_together() -> None:
+    store = InMemoryCaseStore()
+    original = store.create(make_case())
+    transition = CaseTransition(
+        from_status=original.status,
+        to_status=CaseStatus.REINVESTIGATE,
+        actor_id="officer-01",
+        actor_role="SITE_SAFETY_OFFICER",
+        reason="补充现场事实",
+        occurred_at=NOW,
+    )
+    submission = FactsSubmissionRecord(
+        submission_id="submission-case-01-2",
+        case_id=original.case_id,
+        actor_id="officer-01",
+        actor_name="现场安全员",
+        actor_role="SITE_SAFETY_OFFICER",
+        reason=transition.reason,
+        facts={"task_code": "HOT_WORK_CUTTING"},
+        created_at=NOW,
+    )
+
+    committed = store.commit(
+        original.model_copy(update={"status": CaseStatus.REINVESTIGATE}),
+        1,
+        transition,
+        submission=submission,
+    )
+
+    assert committed.transitions == [transition]
+    assert store.list_submissions(original.case_id) == [submission]
+
+
 def test_list_applies_business_filters_before_pagination() -> None:
     store = InMemoryCaseStore()
     matching = make_case(
