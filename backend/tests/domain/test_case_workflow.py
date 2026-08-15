@@ -10,7 +10,10 @@ from app.contracts import (
     CaseSnapshot,
     CaseStatus,
     CaseTransition,
+    FactsSubmissionRecord,
+    HumanSubmissionRecord,
     InvestigationResult,
+    RectificationEvidenceSubmissionRecord,
     RejectCase,
     RejectRecheck,
     RequestReinvestigation,
@@ -23,6 +26,7 @@ from app.domain.case_workflow import (
     CaseWorkflow,
     CommandNotAllowed,
     EvidenceRequired,
+    HumanSubmissionRequired,
     InvalidDeadline,
     PpeNotRequired,
     PermissionDenied,
@@ -128,6 +132,7 @@ def make_case(
 class MemoryCaseStore:
     def __init__(self, case: CaseSnapshot) -> None:
         self.case = case
+        self.submissions: list[HumanSubmissionRecord] = []
 
     def get(self, case_id: str) -> CaseSnapshot | None:
         return self.case if case_id == self.case.case_id else None
@@ -137,6 +142,7 @@ class MemoryCaseStore:
         snapshot: CaseSnapshot,
         expected_version: int,
         transition: CaseTransition,
+        submission: HumanSubmissionRecord | None = None,
     ) -> CaseSnapshot:
         stored = snapshot.model_copy(
             update={
@@ -146,7 +152,38 @@ class MemoryCaseStore:
             }
         )
         self.case = stored
+        if submission is not None:
+            self.submissions.append(submission)
         return stored
+
+
+def facts_submission(command: SubmitFacts) -> FactsSubmissionRecord:
+    return FactsSubmissionRecord(
+        submission_id=f"submission-case-01-{command.expected_version + 1}",
+        case_id="case-01",
+        actor_id=command.actor_id,
+        actor_name="现场安全员",
+        actor_role=ActorRole.SITE_SAFETY_OFFICER,
+        reason=command.reason,
+        facts=command.facts,
+        created_at="2026-08-07T10:35:00+08:00",
+    )
+
+
+def evidence_submission(
+    command: SubmitRectificationEvidence,
+) -> RectificationEvidenceSubmissionRecord:
+    return RectificationEvidenceSubmissionRecord(
+        submission_id=f"submission-case-01-{command.expected_version + 1}",
+        case_id="case-01",
+        actor_id=command.actor_id,
+        actor_name="现场安全员",
+        actor_role=ActorRole.SITE_SAFETY_OFFICER,
+        reason=command.reason,
+        description=command.description,
+        evidence=command.evidence,
+        created_at="2026-08-07T10:35:00+08:00",
+    )
 
 
 class FixedActorRoles:
@@ -181,13 +218,18 @@ def test_officer_can_submit_facts_requested_by_investigation() -> None:
         facts={"task_code": "HOT_WORK_CUTTING"},
     )
 
-    result = workflow.apply("case-01", command)
+    result = workflow.apply(
+        "case-01", command, submission=facts_submission(command)
+    )
+
+    store = workflow._store
 
     assert (result.status, result.version, result.human_facts) == (
         CaseStatus.REINVESTIGATE,
         4,
         {"task_code": "HOT_WORK_CUTTING"},
     )
+    assert store.submissions[0].created_at == result.transitions[-1].occurred_at
 
 
 def test_command_with_an_old_version_is_rejected() -> None:
@@ -394,7 +436,9 @@ def test_officer_can_submit_rectification_evidence() -> None:
         }
     )
 
-    result = workflow.apply("case-01", command)
+    result = workflow.apply(
+        "case-01", command, submission=evidence_submission(command)
+    )
 
     assert (
         result.status,
@@ -413,9 +457,7 @@ def test_reviewer_can_close_a_case_after_evidence_is_submitted() -> None:
     workflow = make_workflow(
         make_case(CaseStatus.RECTIFICATION_OPEN, version=4)
     )
-    workflow.apply(
-        "case-01",
-        SubmitRectificationEvidence.model_validate(
+    command = SubmitRectificationEvidence.model_validate(
             {
                 "actor_id": "officer-01",
                 "expected_version": 4,
@@ -429,7 +471,11 @@ def test_reviewer_can_close_a_case_after_evidence_is_submitted() -> None:
                     }
                 ],
             }
-        ),
+        )
+    workflow.apply(
+        "case-01",
+        command,
+        submission=evidence_submission(command),
     )
 
     result = workflow.apply(
@@ -699,15 +745,17 @@ def test_officer_cannot_approve_or_close(
 
 def test_human_action_is_returned_in_the_case_timeline() -> None:
     workflow = make_workflow(make_case(CaseStatus.NEEDS_HUMAN_FACTS))
+    command = SubmitFacts(
+        actor_id="officer-01",
+        expected_version=1,
+        reason="确认现场任务",
+        facts={"task_code": "HOT_WORK_CUTTING"},
+    )
 
     result = workflow.apply(
         "case-01",
-        SubmitFacts(
-            actor_id="officer-01",
-            expected_version=1,
-            reason="确认现场任务",
-            facts={"task_code": "HOT_WORK_CUTTING"},
-        ),
+        command,
+        submission=facts_submission(command),
     )
 
     assert result.transitions[-1].model_dump() == {
@@ -718,3 +766,16 @@ def test_human_action_is_returned_in_the_case_timeline() -> None:
         "reason": "确认现场任务",
         "occurred_at": NOW,
     }
+
+
+def test_human_submission_is_required_for_audited_transition() -> None:
+    workflow = make_workflow(make_case(CaseStatus.NEEDS_HUMAN_FACTS))
+    command = SubmitFacts(
+        actor_id="officer-01",
+        expected_version=1,
+        reason="确认现场任务",
+        facts={"task_code": "HOT_WORK_CUTTING"},
+    )
+
+    with pytest.raises(HumanSubmissionRequired):
+        workflow.apply("case-01", command)

@@ -142,6 +142,58 @@ def test_officer_facts_command_saves_once_and_returns_latest_reinvestigation() -
     }
 
 
+@pytest.mark.parametrize(
+    ("case_id", "path_suffix", "payload"),
+    [
+        (
+            "case-facts-01",
+            "facts",
+            {
+                "command_type": "SUBMIT_FACTS",
+                "reason": "补充现场事实",
+                "facts": {"task_code": "SCAFFOLD_ASSEMBLY"},
+            },
+        ),
+        (
+            "case-overdue-01",
+            "rectification-evidence",
+            {
+                "command_type": "SUBMIT_RECTIFICATION_EVIDENCE",
+                "reason": "提交整改证据",
+                "description": "已整改",
+                "evidence": [
+                    {
+                        "evidence_id": "unknown-actor-evidence",
+                        "image_url": "/evidence/after.jpg",
+                        "captured_at": "2026-08-09T09:00:00+08:00",
+                    }
+                ],
+            },
+        ),
+    ],
+)
+def test_audited_submissions_reject_unknown_actor_without_transition(
+    case_id: str,
+    path_suffix: str,
+    payload: dict,
+) -> None:
+    before = asyncio.run(request("GET", f"/api/v1/cases/{case_id}")).json()
+    payload.update(
+        actor_id="missing-officer",
+        expected_version=before["snapshot"]["version"],
+    )
+
+    response = asyncio.run(
+        request("POST", f"/api/v1/cases/{case_id}/{path_suffix}", payload)
+    )
+    after = asyncio.run(request("GET", f"/api/v1/cases/{case_id}")).json()
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "PERMISSION_DENIED"
+    assert after["snapshot"] == before["snapshot"]
+    assert after["human_submissions"] == before["human_submissions"]
+
+
 def test_top_repeat_risk_counts_only_confirmed_applicable_cases() -> None:
     base = next(case for case in demo_cases() if case.case_id == "case-01")
     store = InMemoryCaseStore()

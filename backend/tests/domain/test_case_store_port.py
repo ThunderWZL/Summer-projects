@@ -25,6 +25,9 @@ def test_case_store_port_exposes_complete_repository_contract() -> None:
 
     assert get_type_hints(CaseStorePort.create)["snapshot"] is CaseSnapshot
     assert get_type_hints(CaseStorePort.commit)["transition"] is CaseTransition
+    assert get_type_hints(CaseStorePort.commit, include_extras=True)[
+        "submission"
+    ] == HumanSubmissionRecord | None
     assert get_type_hints(CaseStorePort.add_submission, include_extras=True)[
         "submission"
     ] == HumanSubmissionRecord

@@ -44,6 +44,7 @@ class CaseStorePort(Protocol):
         snapshot: CaseSnapshot,
         expected_version: int,
         transition: CaseTransition,
+        submission: HumanSubmissionRecord | None = None,
     ) -> CaseSnapshot: ...
 
     def list(self, query: CaseQuery) -> CasePage: ...
