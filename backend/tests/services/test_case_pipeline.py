@@ -9,7 +9,9 @@ from app.contracts import (
     ActorRole,
     CaseStatus,
     Citation,
+    FactsSubmissionRecord,
     InvestigationResult,
+    SubmitFacts,
 )
 from app.domain.case_workflow import CaseWorkflow, CommandNotAllowed
 from app.domain.inmemory.case_store import InMemoryCaseStore
@@ -194,15 +196,27 @@ def test_resume_reinvestigates_and_illegal_start_is_rejected_by_workflow() -> No
         investigation_result=investigation(complete=False)
     )
     needs_facts = asyncio.run(pipeline.process_candidate(candidate()))
-    from app.contracts import SubmitFacts
+    command = SubmitFacts(
+        actor_id="officer-01",
+        expected_version=needs_facts.version,
+        reason="补充现场说明",
+        facts={"site_note": "切割区域正在作业"},
+    )
 
     reinvestigate = workflow.apply(
         needs_facts.case_id,
-        SubmitFacts(
-            actor_id="officer-01",
-            expected_version=needs_facts.version,
-            reason="补充现场说明",
-            facts={"site_note": "切割区域正在作业"},
+        command,
+        submission=FactsSubmissionRecord(
+            submission_id=(
+                f"submission-{needs_facts.case_id}-{needs_facts.version + 1}"
+            ),
+            case_id=needs_facts.case_id,
+            actor_id=command.actor_id,
+            actor_name="现场安全员",
+            actor_role=ActorRole.SITE_SAFETY_OFFICER,
+            reason=command.reason,
+            facts=command.facts,
+            created_at=NOW,
         ),
     )
     investigation_adapter.result = investigation(complete=True)

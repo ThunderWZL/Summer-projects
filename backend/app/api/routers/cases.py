@@ -43,7 +43,7 @@ from app.contracts import (
     TimelineSource,
 )
 from app.domain.case_store import CaseQuery, CaseStorePort
-from app.domain.case_workflow import CaseWorkflow
+from app.domain.case_workflow import CaseWorkflow, PermissionDenied
 from app.services.case_pipeline import CasePipeline
 from app.domain.site_context import (
     ResponsibleParty,
@@ -368,25 +368,24 @@ def submit_facts(
     case_id: str,
     command: SubmitFacts,
     workflow: CaseWorkflow = Depends(get_case_workflow),
-    store: CaseStorePort = Depends(get_case_store),
     users: UserDirectoryPort = Depends(get_user_directory),
     pipeline: CasePipeline = Depends(get_case_pipeline),
+    clock: Clock = Depends(get_clock),
 ) -> CaseCommandResponse:
-    snapshot = workflow.apply(case_id, command)
     user = users.get(command.actor_id)
-    if user is not None:
-        store.add_submission(
-            FactsSubmissionRecord(
-                submission_id=f"submission-{case_id}-{snapshot.version}",
-                case_id=case_id,
-                actor_id=user.actor_id,
-                actor_name=user.name,
-                actor_role=user.role,
-                reason=command.reason,
-                facts=command.facts,
-                created_at=snapshot.updated_at,
-            )
-        )
+    if user is None:
+        raise PermissionDenied(command.actor_id)
+    submission = FactsSubmissionRecord(
+        submission_id=f"submission-{case_id}-{command.expected_version + 1}",
+        case_id=case_id,
+        actor_id=user.actor_id,
+        actor_name=user.name,
+        actor_role=user.role,
+        reason=command.reason,
+        facts=command.facts,
+        created_at=clock(),
+    )
+    snapshot = workflow.apply(case_id, command, submission=submission)
     snapshot = pipeline.resume_investigation(case_id)
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
@@ -417,25 +416,24 @@ def submit_rectification_evidence(
     case_id: str,
     command: SubmitRectificationEvidence,
     workflow: CaseWorkflow = Depends(get_case_workflow),
-    store: CaseStorePort = Depends(get_case_store),
     users: UserDirectoryPort = Depends(get_user_directory),
+    clock: Clock = Depends(get_clock),
 ) -> CaseCommandResponse:
-    snapshot = workflow.apply(case_id, command)
     user = users.get(command.actor_id)
-    if user is not None:
-        store.add_submission(
-            RectificationEvidenceSubmissionRecord(
-                submission_id=f"submission-{case_id}-{snapshot.version}",
-                case_id=case_id,
-                actor_id=user.actor_id,
-                actor_name=user.name,
-                actor_role=user.role,
-                reason=command.reason,
-                description=command.description,
-                evidence=command.evidence,
-                created_at=snapshot.updated_at,
-            )
-        )
+    if user is None:
+        raise PermissionDenied(command.actor_id)
+    submission = RectificationEvidenceSubmissionRecord(
+        submission_id=f"submission-{case_id}-{command.expected_version + 1}",
+        case_id=case_id,
+        actor_id=user.actor_id,
+        actor_name=user.name,
+        actor_role=user.role,
+        reason=command.reason,
+        description=command.description,
+        evidence=command.evidence,
+        created_at=clock(),
+    )
+    snapshot = workflow.apply(case_id, command, submission=submission)
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
 
 

@@ -13,6 +13,7 @@ from app.contracts import (
     CaseStatus,
     CaseTransition,
     InvestigationResult,
+    HumanSubmissionRecord,
     RejectCase,
     RejectRecheck,
     RequestReinvestigation,
@@ -90,6 +91,13 @@ class PermissionDenied(CaseWorkflowError):
         super().__init__(f"actor {actor_id} cannot execute this command")
 
 
+class HumanSubmissionRequired(CaseWorkflowError):
+    code = "HUMAN_SUBMISSION_REQUIRED"
+
+    def __init__(self, command_type: str) -> None:
+        super().__init__(f"{command_type} requires a human submission record")
+
+
 class CommandNotAllowed(CaseWorkflowError):
     code = "COMMAND_NOT_ALLOWED"
 
@@ -148,7 +156,12 @@ class CaseWorkflow:
         self._clock = clock
         self._responsible_party_is_eligible = responsible_party_is_eligible
 
-    def apply(self, case_id: str, command: WorkflowCommand) -> CaseSnapshot:
+    def apply(
+        self,
+        case_id: str,
+        command: WorkflowCommand,
+        submission: HumanSubmissionRecord | None = None,
+    ) -> CaseSnapshot:
         snapshot = self._store.get(case_id)
         if snapshot is None:
             raise CaseNotFound(case_id)
@@ -311,6 +324,8 @@ class CaseWorkflow:
             actor_role = self._actor_roles.role_for(command.actor_id)
             if actor_role is not ActorRole.SITE_SAFETY_OFFICER:
                 raise PermissionDenied(command.actor_id)
+            if submission is None:
+                raise HumanSubmissionRequired(command.command_type)
             updated = snapshot.model_copy(
                 update={
                     "status": CaseStatus.RECHECK_PENDING,
@@ -329,10 +344,11 @@ class CaseWorkflow:
                 reason=command.reason,
                 occurred_at=self._transition_time(snapshot),
             )
-            return self._store.commit(
+            return self._commit_human_transition(
                 updated,
-                expected_version=command.expected_version,
-                transition=transition,
+                command.expected_version,
+                transition,
+                submission,
             )
 
         if isinstance(command, ApproveClosure):
@@ -398,6 +414,8 @@ class CaseWorkflow:
         actor_role = self._actor_roles.role_for(command.actor_id)
         if actor_role is not ActorRole.SITE_SAFETY_OFFICER:
             raise PermissionDenied(command.actor_id)
+        if submission is None:
+            raise HumanSubmissionRequired(command.command_type)
 
         updated = snapshot.model_copy(
             update={
@@ -413,10 +431,33 @@ class CaseWorkflow:
             reason=command.reason,
             occurred_at=self._transition_time(snapshot),
         )
-        return self._store.commit(
+        return self._commit_human_transition(
             updated,
-            expected_version=command.expected_version,
+            command.expected_version,
+            transition,
+            submission,
+        )
+
+    def _commit_human_transition(
+        self,
+        snapshot: CaseSnapshot,
+        expected_version: int,
+        transition: CaseTransition,
+        submission: HumanSubmissionRecord | None,
+    ) -> CaseSnapshot:
+        if submission is None:
+            return self._store.commit(
+                snapshot,
+                expected_version=expected_version,
+                transition=transition,
+            )
+        return self._store.commit(
+            snapshot,
+            expected_version=expected_version,
             transition=transition,
+            submission=submission.model_copy(
+                update={"created_at": transition.occurred_at}
+            ),
         )
 
     def _commit_system_transition(
