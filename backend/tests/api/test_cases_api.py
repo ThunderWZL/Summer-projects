@@ -5,14 +5,17 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
+    build_fixture_case_pipeline,
     get_case_pipeline,
     get_case_store,
     get_clock,
     get_investigation_port,
+    get_site_context,
+    get_user_directory,
 )
 from app.contracts import CaseStatus
 from app.domain.inmemory.case_store import InMemoryCaseStore
-from app.domain.inmemory.fixture_cases import demo_cases
+from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.main import app
 
 
@@ -23,12 +26,26 @@ def setup_function() -> None:
     get_case_pipeline.cache_clear()
     get_investigation_port.cache_clear()
     get_case_store.cache_clear()
+    store = InMemoryCaseStore()
+    for snapshot in demo_cases():
+        store.create(snapshot)
+    for submission in demo_submissions():
+        store.add_submission(submission)
+    pipeline = build_fixture_case_pipeline(
+        store,
+        get_user_directory(),
+        get_site_context(),
+        lambda: NOW,
+    )
+    app.dependency_overrides[get_case_store] = lambda: store
+    app.dependency_overrides[get_case_pipeline] = lambda: pipeline
     app.dependency_overrides[get_clock] = lambda: lambda: NOW
 
 
 def teardown_function() -> None:
     app.dependency_overrides.pop(get_clock, None)
     app.dependency_overrides.pop(get_case_store, None)
+    app.dependency_overrides.pop(get_case_pipeline, None)
 
 
 async def request(method: str, path: str, json: dict | None = None):

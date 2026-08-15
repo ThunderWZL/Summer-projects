@@ -156,6 +156,7 @@ AGENT_ENV_KEYS = (
     "AGENT_MAX_TOOL_ROUNDS",
     "AGENT_LLM_TEMPERATURE",
 )
+DATABASE_ENV_KEYS = ("DATABASE_URL", "DATABASE_ECHO")
 
 
 def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,6 +171,18 @@ def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.agent_llm_max_retries == 2
     assert settings.agent_max_tool_rounds == 6
     assert settings.agent_llm_temperature == 0
+
+
+def test_database_settings_load_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/siteppe-test.db")
+    monkeypatch.setenv("DATABASE_ECHO", "true")
+
+    settings = Settings()
+
+    assert settings.database_url == "sqlite:////tmp/siteppe-test.db"
+    assert settings.database_echo is True
 
 
 @pytest.mark.parametrize(
@@ -198,6 +211,7 @@ def test_env_example_lists_agent_configuration_without_secret_values() -> None:
     }
 
     assert set(AGENT_ENV_KEYS) <= values.keys()
+    assert set(DATABASE_ENV_KEYS) <= values.keys()
     assert values["DEEPSEEK_API_KEY"] == ""
     assert values["VLM_API_KEY"] == ""
     assert values["EMBEDDING_API_KEY"] == ""

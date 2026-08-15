@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
@@ -10,14 +12,28 @@ from app.api.routers.demo import router as demo_router
 from app.api.routers.requirements import router as requirements_router
 from app.api.routers.sessions import router as sessions_router
 from app.api.ws import router as websocket_router
+from app.api.deps import (
+    initialize_database_runtime,
+    shutdown_database_runtime,
+)
 from app.contracts import SHARED_COMMANDS, SHARED_CONTRACTS
 from app.domain.case_workflow import CaseWorkflowError
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_database_runtime()
+    try:
+        yield
+    finally:
+        shutdown_database_runtime()
 
 
 app = FastAPI(
     title="SitePPE Agent",
     version="0.1.0",
     description="施工现场任务型 PPE 合规调查与整改平台",
+    lifespan=lifespan,
 )
 app.include_router(demo_router)
 app.include_router(requirements_router)

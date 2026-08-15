@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    database_url: str = "sqlite:///./siteppe.db"
+    database_echo: bool = False
     vlm_provider: str = "fixed"
     vlm_api_base_url: str | None = None
     vlm_api_key: str | None = None
