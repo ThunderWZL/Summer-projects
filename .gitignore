@@ -51,6 +51,7 @@ frontend/vite.config.d.ts
 *.sqlite
 *.sqlite3
 chroma_db/
+.data/
 *.chroma/
 
 # Datasets, demo media, and model artifacts
@@ -60,6 +61,7 @@ chroma_db/
 /datasets/
 /models/
 /ml/data/
+/ml/video/
 /ml/models/
 *.pt
 *.pth

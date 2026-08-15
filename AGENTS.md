@@ -24,18 +24,21 @@ git branch --show-current
 ### 创建任务分支
 
 * 每个线下分配的任务使用一个独立的短期任务分支。
-* 禁止直接在 `main` 上开发。
-* 从最新的远程 `main` 创建任务分支。
+* `dev` 是团队集成测试分支，`main` 是测试通过后的稳定发布分支。
+* 禁止直接在 `dev` 或 `main` 上开发。
+* 从最新的远程 `dev` 创建任务分支。
 
 依次执行：
 
 ```bash
 git fetch origin
-git switch main
-git pull --ff-only origin main
+git switch dev
+git pull --ff-only origin dev
 git switch -c <type>/<slug>
 ```
 
+* 创建任务分支前确认 `origin/dev` 已存在。
+* `origin/dev` 不存在时停止创建任务分支，并联系项目负责人从最新的 `main` 初始化 `dev`。
 * 根据任务类型使用 `feat`、`fix` 或 `chore` 作为 `<type>`。
 * 使用简短的小写英文和连字符编写 `<slug>`。
 * 创建或切换分支前确认工作区没有未提交修改。
@@ -62,14 +65,25 @@ chore/<slug>
 * 严格限制修改范围，只处理当前任务要求的内容。
 * 禁止顺手重构、格式化、移动或重命名无关代码。
 * 发现当前任务与队友修改同一公共接口、数据表或文件时，先同步分工，再继续修改。
-* 将公共接口、数据库结构和状态枚举的变更作为独立 commit。
-* 在依赖方开始实现前，提交并推送上述共享变更。
+* 已冻结的共享契约、状态枚举和数据库 schema 默认保持不变；只有当前任务明确要求修正契约差距时才允许修改。
+* 经明确授权的共享接口变更必须先对齐共享契约，作为独立 commit 提交并推送，再通知依赖方开始实现。
+* 初始数据库 schema 评审合入 `dev` 后按 D-09 冻结；本轮禁止继续增加表或数据库迁移。
+* 按固定范围分工：Wuweizhe 负责 `ml/` 和 `backend/app/modules/video_analysis/`；Thxnks 负责 `backend/app/repositories/`、`backend/app/adapters/database/`、`frontend/src/features/cases/` 和 `frontend/src/features/review/`；Thunder 负责 `backend/app/domain/`、`backend/app/api/`、其他后端模块及 `frontend/src/features/monitor/`。
+* `backend/app/contracts.py`、`backend/app/main.py`、`frontend/src/App.tsx` 和 `frontend/src/shared/` 由 Thunder 统一整合；其他负责人通过冻结契约交接，不直接维护第二份实现。
 * 只执行线下明确分配的任务。
 * 未经明确要求，禁止创建 Issue。
 * 未经明确要求，禁止创建 Pull Request。
 * 未经明确要求，禁止创建额外的任务跟踪文件。
 
 ## 开发执行
+
+### 文档权威
+
+* 涉及产品范围、关键决策或成功标准时，先读 `项目设计文档/项目总体设计.md`，再按其文档地图读取当前负责人的设计文档。
+* 涉及 `CandidateEvidence`、VLM、调查、Case 工作流与读模型、人工命令、实时事件、REST、错误或六路演示上下文时，优先读取项目负责人提供的当前 `reports/generated/共享契约（给ai）.md`，并遵循其中的权威顺序。
+* `reports/generated/共享契约（给ai）.md` 未提供时，回退读取 `项目设计文档/共享契约与集成验收.md`；缺少当前 AI 契约副本时不得自行改变冻结契约。
+* 使用 `backend/app/contracts.py` 核对字段、JSON 类型、枚举、必填性、默认值和可执行校验；需要字段级自动校验时使用 `GET /api/v1/contracts/schema`。
+* 文档与实现不一致时，不得静默选择或建立兼容双轨；按文档权威顺序确认目标，并在同一任务中同步直接调用方和契约测试。
 
 ### 获取上下文
 
@@ -113,13 +127,20 @@ chore/<slug>
 
 ```bash
 cd backend
-python -m pytest
+.venv/bin/python -m pytest
 ```
 
 * 当前未配置后端 lint 和类型检查命令。
 * 禁止自行虚构或替换未配置的检查命令。
 
 ### 前端检查
+
+运行前端测试：
+
+```bash
+cd frontend
+npm run test
+```
 
 运行前端类型检查和生产构建：
 
@@ -128,15 +149,33 @@ cd frontend
 npm run build
 ```
 
-* 当前未配置前端测试和 lint 命令。
+* 当前未配置前端 lint 命令。
 * 禁止自行虚构或替换未配置的检查命令。
+* 修改 OpenAPI 或前端共享请求响应契约时，先启动后端，再执行 `cd frontend && npm run generate:contracts`，随后运行生产构建。
 
 ### ML 检查
 
-* 当前未配置 ML 全局测试、lint 或构建命令。
+运行 ML 单元测试：
+
+```bash
+backend/.venv/bin/python -m pytest ml/tests
+```
+
+* 当前未配置 ML lint、构建或全局训练验收命令。
 * 修改 ML 代码时运行当前任务指定的训练、评估或推理命令。
 * 在开发日志和完成汇报中记录实际执行的 ML 命令和结果。
 * 项目新增或修改标准检查命令时，同步更新本节。
+
+### RAG 检查
+
+修改真实 RAG 索引、检索或来源语料时运行：
+
+```bash
+cd backend
+.venv/bin/python scripts/check_rag_topk.py
+```
+
+* 未配置真实密钥或未准备已复核语料时，记录脚本为未运行或失败及其原因，禁止把空索引或 fixture 结果声明为真实 RAG 验收通过。
 
 ## 开发日志
 
@@ -285,30 +324,42 @@ git push origin <task-branch>
 git fetch origin
 ```
 
-* 检查 `origin/main` 是否已经前进。
-* 当 `origin/main` 包含新提交时，将其合并到当前任务分支。
+* 检查 `origin/dev` 是否已经前进。
+* 当 `origin/dev` 包含新提交时，将其合并到当前任务分支。
 * 解决冲突后重新运行相关测试、静态检查和构建命令。
 * 无法判断冲突处理方式时停止合并，并联系相关成员确认。
 
-### 验收与合并
+### 集成验收与发布
 
-* 禁止由 Agent 根据测试结果自行认定任务已经验收。
-* 只有任务负责人明确确认验收通过后才允许合并。
-* 合并前在已经同步 `origin/main` 的任务分支上运行完整测试和构建。
+* 任务分支开发完成后先合并到 `dev`，用于项目负责人集成测试。
+* 合并到 `dev` 不代表最终验收通过，也不授权合并到 `main`。
+* 合并前在已经同步 `origin/dev` 的任务分支上运行完整测试和构建。
+* 合并前确认任务分支已经推送。
 
-仅在任务负责人明确确认验收且完整检查通过后执行：
+任务分支完整检查通过后执行：
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git merge --no-ff <task-branch>
+git push origin dev
+```
+
+* 推送 `dev` 被拒绝时，重新获取远程修改并逐项解决冲突。
+* 项目负责人在 `dev` 完成测试并明确确认验收后，由项目负责人将 `dev` 合并到 `main`。
+* Agent 禁止合并或推送 `main`；只有项目负责人执行正式发布操作。
+
+项目负责人验收通过后执行：
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git merge --no-ff <task-branch>
+git merge --no-ff dev
 git push origin main
 ```
 
-* 合并前确认任务分支已经推送。
-* 任务分支完整测试和构建通过后再合并并推送 `main`。
-* 推送 `main` 被拒绝时，重新拉取远程修改并解决冲突。
-* 禁止通过强制推送覆盖远程 `main`。
+* 推送 `main` 被拒绝时，由项目负责人重新拉取远程修改并解决冲突。
+* 禁止通过强制推送覆盖远程 `dev` 或 `main`。
 
 ### 禁止操作
 
@@ -332,9 +383,11 @@ git push --force-with-lease
 * 数据集和数据导出文件。
 * 模型权重和模型缓存。
 * 演示视频和其他大型媒体文件。
+* 运行数据库、向量索引和可重建 RAG artifact，包括 `.data/`、`chroma_db/`、SQLite 文件和 Chroma 持久化目录。
 * 运行日志和调试输出。
 * 缓存文件和临时文件。
 * 构建产物和未明确纳入版本控制的生成文件。
+* `reports/generated/` 下由项目负责人私下分发的 AI 契约；以当前副本为准，禁止修改 `.gitignore`、强制暂存或另建契约版本。
 * 包含真实环境值的 `.env` 和本地环境配置文件。
 * 真实密钥、Token、密码或其他敏感信息。
 
@@ -357,4 +410,5 @@ git push --force-with-lease
 * 使用简短列表汇报已完成修改、验证结果和遗留问题。
 * 对每个未运行或未通过的检查给出明确说明。
 * 仅在有助于继续开发时提供文件路径和后续操作。
+* 跨模块交付还必须包含调用入口、合法输入输出样例、至少一个非法输入及预期错误、实际验证命令和已知限制。
 * 禁止生成重复的总结、复盘或长篇实现说明。

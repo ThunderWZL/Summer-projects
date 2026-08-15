@@ -34,6 +34,12 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "real_rag: requires configured embedding credentials and local authoritative corpus",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["resources/demo/*.json"]

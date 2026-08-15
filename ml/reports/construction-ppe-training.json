@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "task": "W-02",
+  "status": "completed",
+  "dataset": {
+    "name": "Construction-PPE",
+    "version": "1.0.0",
+    "license": "AGPL-3.0",
+    "archive_sha256": "bef8dcb599aa4e9d9f5e602cb6fa7143d3c84d7f6a0ff40463d7f2a4c2632ccc",
+    "source_manifest": "ml/configs/construction-ppe-source.json",
+    "splits": {
+      "train_images": 1132,
+      "validation_images": 143,
+      "test_images": 141
+    }
+  },
+  "environment": {
+    "python": "3.10.20",
+    "torch": "2.5.1+cu124",
+    "ultralytics": "8.4.47",
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "physical_gpu_index": 5
+  },
+  "training": {
+    "base_model": "YOLO11n",
+    "base_model_sha256": "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1",
+    "config": "ml/configs/train.yaml",
+    "epochs": 80,
+    "image_size": 640,
+    "batch_size": 16,
+    "workers": 8,
+    "seed": 42,
+    "deterministic": true,
+    "optimizer_selected_by_ultralytics": "AdamW(lr=0.000667,momentum=0.9)",
+    "elapsed_hours": 0.252,
+    "command": "CUDA_VISIBLE_DEVICES=5 yolo detect train model=yolo11n.pt data=work3-dataset.yaml epochs=80 imgsz=640 batch=16 device=0 workers=8 project=outputs/training name=construction-ppe-baseline seed=42 deterministic=True",
+    "best_epoch_by_validation_map50_95": {
+      "epoch": 69,
+      "precision": 0.69951,
+      "recall": 0.57413,
+      "map50": 0.59186,
+      "map50_95": 0.2876
+    },
+    "best_checkpoint_validation": {
+      "images": 143,
+      "instances": 1172,
+      "precision": 0.701,
+      "recall": 0.573,
+      "map50": 0.592,
+      "map50_95": 0.288
+    }
+  },
+  "fixed_test_evaluation": {
+    "split": "test",
+    "images": 141,
+    "instances": 1251,
+    "command": "CUDA_VISIBLE_DEVICES=5 yolo detect val model=outputs/training/construction-ppe-baseline/weights/best.pt data=work3-dataset.yaml split=test imgsz=640 batch=16 device=0 workers=8 plots=True project=outputs/evaluation name=construction-ppe-test",
+    "overall": {
+      "precision": 0.59,
+      "recall": 0.541,
+      "map50": 0.537,
+      "map50_95": 0.264
+    },
+    "per_class": [
+      {"name": "helmet", "images": 110, "instances": 192, "precision": 0.9, "recall": 0.917, "map50": 0.929, "map50_95": 0.475},
+      {"name": "gloves", "images": 75, "instances": 163, "precision": 0.795, "recall": 0.736, "map50": 0.77, "map50_95": 0.381},
+      {"name": "vest", "images": 111, "instances": 178, "precision": 0.794, "recall": 0.86, "map50": 0.878, "map50_95": 0.553},
+      {"name": "boots", "images": 75, "instances": 211, "precision": 0.701, "recall": 0.72, "map50": 0.753, "map50_95": 0.394},
+      {"name": "goggles", "images": 51, "instances": 52, "precision": 0.836, "recall": 0.782, "map50": 0.788, "map50_95": 0.32},
+      {"name": "none", "images": 35, "instances": 65, "precision": 0.403, "recall": 0.436, "map50": 0.331, "map50_95": 0.102},
+      {"name": "Person", "images": 133, "instances": 236, "precision": 0.821, "recall": 0.835, "map50": 0.841, "map50_95": 0.498},
+      {"name": "no_helmet", "images": 24, "instances": 40, "precision": 0.266, "recall": 0.225, "map50": 0.121, "map50_95": 0.0402},
+      {"name": "no_goggle", "images": 24, "instances": 33, "precision": 0.295, "recall": 0.212, "map50": 0.215, "map50_95": 0.0695},
+      {"name": "no_gloves", "images": 23, "instances": 58, "precision": 0.601, "recall": 0.19, "map50": 0.238, "map50_95": 0.065},
+      {"name": "no_boots", "images": 6, "instances": 23, "precision": 0.0734, "recall": 0.0435, "map50": 0.0386, "map50_95": 0.00708}
+    ]
+  },
+  "failure_analysis": {
+    "confidence_threshold": 0.25,
+    "iou_threshold": 0.5,
+    "true_positives": 891,
+    "false_positives": 270,
+    "false_negatives": 360,
+    "images_with_errors": 99,
+    "ranked_examples": [
+      {"image": "image1264.jpg", "false_positives": 12, "false_negatives": 25, "error_count": 37},
+      {"image": "image1145.jpg", "false_positives": 4, "false_negatives": 32, "error_count": 36},
+      {"image": "image182.jpg", "false_positives": 2, "false_negatives": 31, "error_count": 33},
+      {"image": "image1239.jpg", "false_positives": 8, "false_negatives": 16, "error_count": 24},
+      {"image": "image1256.jpg", "false_positives": 6, "false_negatives": 16, "error_count": 22},
+      {"image": "image1354.jpg", "false_positives": 12, "false_negatives": 8, "error_count": 20},
+      {"image": "image1235.jpg", "false_positives": 7, "false_negatives": 11, "error_count": 18},
+      {"image": "image537.jpg", "false_positives": 8, "false_negatives": 9, "error_count": 17},
+      {"image": "image1270.jpg", "false_positives": 2, "false_negatives": 11, "error_count": 13},
+      {"image": "image1125.jpg", "false_positives": 3, "false_negatives": 10, "error_count": 13},
+      {"image": "image462.jpg", "false_positives": 3, "false_negatives": 10, "error_count": 13},
+      {"image": "image619.jpeg", "false_positives": 8, "false_negatives": 4, "error_count": 12}
+    ]
+  },
+  "artifacts": {
+    "storage": "Git-ignored local directory ml/data/w02-artifacts/outputs",
+    "best_weight": {
+      "path": "ml/data/w02-artifacts/outputs/training/construction-ppe-baseline/weights/best.pt",
+      "bytes": 5479379,
+      "sha256": "117103a9ddf7e41ac423fcd923c059dd8410f19494ef27acbc55fc1bec8871d4"
+    },
+    "training_metrics": "ml/data/w02-artifacts/outputs/training/construction-ppe-baseline/results.csv",
+    "test_confusion_matrix": "ml/data/w02-artifacts/outputs/evaluation/construction-ppe-test/confusion_matrix.png",
+    "test_normalized_confusion_matrix": "ml/data/w02-artifacts/outputs/evaluation/construction-ppe-test/confusion_matrix_normalized.png",
+    "failure_details": "ml/data/w02-artifacts/outputs/failure-analysis/failure-analysis.json",
+    "rendered_failure_examples": "ml/data/w02-artifacts/outputs/failure-analysis/rendered"
+  },
+  "notes": [
+    "The Ultralytics online AMP probe could not download YOLO26n because the server TLS certificate did not match github.com; Ultralytics skipped the probe and continued with AMP enabled.",
+    "One duplicate label was removed by Ultralytics while caching image187.jpg; the source dataset split and annotations were not rewritten.",
+    "The no_boots class has only 23 fixed-test instances and produced the weakest class metrics, so safety-shoe candidates require conservative downstream review."
+  ]
+}
