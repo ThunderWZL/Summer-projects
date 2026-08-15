@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
@@ -17,7 +18,9 @@ from app.api.deps import (
     get_site_context,
     get_session_manager,
     get_user_directory,
+    shutdown_database_runtime,
 )
+from app.config import get_settings
 from app.contracts import Citation, InvestigationResult
 from app.domain.case_workflow import CaseWorkflow
 from app.domain.inmemory.case_store import InMemoryCaseStore
@@ -29,6 +32,19 @@ from app.services.case_pipeline import CasePipeline
 
 
 NOW = datetime.fromisoformat("2026-08-15T10:00:00+08:00")
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    shutdown_database_runtime()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"sqlite:///{tmp_path / 'end-to-end.db'}",
+    )
+    get_settings.cache_clear()
+    yield
+    shutdown_database_runtime()
+    get_settings.cache_clear()
 
 
 class FactsCompletingInvestigation:

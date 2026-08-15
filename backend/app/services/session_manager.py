@@ -31,6 +31,14 @@ from app.services.event_hub import EventHub
 VideoLookup = Callable[[str], VideoInfo | None]
 StreamProvider = Callable[[str], AsyncIterator[bytes]]
 SessionRunner = Callable[[AnalysisSession, "SessionManager"], Awaitable[None]]
+SessionSaver = Callable[[AnalysisSession, int], None]
+
+
+def _ignore_session_save(
+    _session: AnalysisSession,
+    _playback_ms: int,
+) -> None:
+    return None
 
 
 class SessionManager(VideoAnalysisPort):
@@ -40,11 +48,14 @@ class SessionManager(VideoAnalysisPort):
         get_video: VideoLookup,
         get_stream: StreamProvider,
         run_session: SessionRunner,
+        *,
+        save_session: SessionSaver = _ignore_session_save,
     ) -> None:
         self._event_hub = event_hub
         self._get_video = get_video
         self._get_stream = get_stream
         self._run_session = run_session
+        self._save_session = save_session
         self._sessions: dict[str, AnalysisSession] = {}
         self._active_session_id: str | None = None
         self._streamable_session_ids: set[str] = set()
@@ -62,6 +73,7 @@ class SessionManager(VideoAnalysisPort):
                 video_id=video_id,
                 stage=AnalysisStage.STARTING,
             )
+            self._save_session(session, 0)
             self._sessions[session.session_id] = session
             self._active_session_id = session.session_id
             self._streamable_session_ids.add(session.session_id)
@@ -88,15 +100,14 @@ class SessionManager(VideoAnalysisPort):
         if session.stage is AnalysisStage.STOPPING:
             return session
         stopped = replace(session, stage=AnalysisStage.STOPPING)
-        self._sessions[session_id] = stopped
-        self._streamable_session_ids.discard(session_id)
-        self._clear_active_session(session_id)
         await self.publish_progress(
             session_id,
             stage=AnalysisStage.STOPPING,
             progress=1.0,
             message="analysis session stopping",
         )
+        self._streamable_session_ids.discard(session_id)
+        self._clear_active_session(session_id)
         task = self._tasks.get(session_id)
         if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
@@ -117,7 +128,7 @@ class SessionManager(VideoAnalysisPort):
         case_count: int = 0,
         playback_ms: int = 0,
     ) -> AnalysisEvent:
-        self._update_stage(session_id, stage)
+        self._update_stage(session_id, stage, playback_ms)
         return await self._event_hub.publish(
             session_id,
             AnalysisEventType.SESSION_PROGRESS,
@@ -224,9 +235,16 @@ class SessionManager(VideoAnalysisPort):
         except KeyError as error:
             raise AnalysisSessionNotFound(session_id) from error
 
-    def _update_stage(self, session_id: str, stage: AnalysisStage) -> None:
+    def _update_stage(
+        self,
+        session_id: str,
+        stage: AnalysisStage,
+        playback_ms: int,
+    ) -> None:
         session = self._require_session(session_id)
-        self._sessions[session_id] = replace(session, stage=stage)
+        updated = replace(session, stage=stage)
+        self._save_session(updated, playback_ms)
+        self._sessions[session_id] = updated
 
     def _clear_active_session(self, session_id: str) -> None:
         if self._active_session_id == session_id:

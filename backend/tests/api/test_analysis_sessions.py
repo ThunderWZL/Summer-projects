@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
@@ -9,8 +10,23 @@ from app.api.deps import (
     get_inmemory_video_analysis,
     get_session_manager,
     get_investigation_port,
+    shutdown_database_runtime,
 )
+from app.config import get_settings
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    shutdown_database_runtime()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"sqlite:///{tmp_path / 'analysis-sessions.db'}",
+    )
+    get_settings.cache_clear()
+    yield
+    shutdown_database_runtime()
+    get_settings.cache_clear()
 
 
 def setup_function() -> None:
@@ -193,6 +209,7 @@ def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
         created = next(
             event for event in received if event.event_type.value == "CANDIDATE_CREATED"
         )
+        get_case_store.cache_clear()
         detail = await request("GET", f"/api/v1/cases/{created.case_id}")
         return created, received, detail
 

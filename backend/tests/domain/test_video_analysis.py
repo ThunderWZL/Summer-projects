@@ -2,6 +2,8 @@ import asyncio
 from inspect import signature
 from typing import get_type_hints
 
+import pytest
+
 from app.contracts import AnalysisEvent, AnalysisStage
 from app.domain.case_store import CaseQuery
 from app.domain.inmemory.case_store import InMemoryCaseStore
@@ -18,7 +20,22 @@ from app.api.deps import (
     get_inmemory_video_analysis,
     get_investigation_port,
     get_session_manager,
+    shutdown_database_runtime,
 )
+from app.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    shutdown_database_runtime()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"sqlite:///{tmp_path / 'video-analysis.db'}",
+    )
+    get_settings.cache_clear()
+    yield
+    shutdown_database_runtime()
+    get_settings.cache_clear()
 
 
 def _case_store() -> InMemoryCaseStore:

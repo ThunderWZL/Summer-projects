@@ -381,3 +381,25 @@
 ### 后续计划
 
 * 推送审查修正后的 `feat/case-pipeline`，交由项目负责人进行集成验收。
+
+## 2026-08-16
+
+### 当日目标
+
+* 将案例 API 与分析流程接入 SQLAlchemy 仓储，保证分析会话先于案例持久化并支持进程内仓储重建后读取。
+
+### 开发记录
+
+* 00:48 `fix(store): 接入SQL案例仓储运行时`
+  * 完成：运行时案例仓储由内存实现切换为 `SqlAlchemyCaseStore`，正式启动不再预载案例夹具；分析任务启动前先持久化 `analysis_sessions`，消除案例外键失败。
+  * 实现：新增数据库 URL 与 SQL 回显配置、FastAPI 数据库启动和释放生命周期、分析会话 SQL 保存适配器；保留站点上下文种子，并将案例 API 的 demo 数据改为显式测试依赖。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，339 项通过、1 项跳过；`cd frontend && npm run build`，失败，当前 `node_modules` 缺少已声明的 `vitest` 与 `@testing-library/react` 等开发依赖；`git diff --check`，通过；后端未配置 lint 和类型检查，前端未配置 lint。
+
+### 问题与处理
+
+* 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
+* 前端构建失败与本次纯后端接线无关，未修改前端依赖或源码。
+
+### 后续计划
+
+* 推送 `fix/case-store-runtime-wiring` 任务分支，交由项目负责人在 `dev` 集成验收。

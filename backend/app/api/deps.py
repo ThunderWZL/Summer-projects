@@ -1,16 +1,22 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 
 from fastapi import Depends
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.database.seed import initialize_database
+from app.adapters.database.session import (
+    create_database_engine,
+    create_session_factory,
+)
 from app.domain.case_store import CaseStorePort
 from app.domain.case_workflow import CaseWorkflow
 from app.domain.investigation import InvestigationPort
 from app.domain.resolver import DeterministicInvestigationResolver, InvestigationResolverPort
 from app.domain.inmemory.actor_roles import DemoUserDirectory
-from app.domain.inmemory.case_store import InMemoryCaseStore
-from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.inmemory.video_analysis import InMemoryVideoAnalysis
 from app.domain.inmemory.fake_investigation import (
@@ -37,9 +43,59 @@ from app.services.case_pipeline import CasePipeline
 from app.config import get_settings
 from app.services.event_hub import EventHub
 from app.services.session_manager import SessionManager
+from app.repositories import (
+    SqlAlchemyAnalysisSessionStore,
+    SqlAlchemyCaseStore,
+)
 
 
 Clock = Callable[[], datetime]
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseRuntime:
+    engine: Engine
+    session_factory: sessionmaker[Session]
+
+
+_database_runtime: DatabaseRuntime | None = None
+
+
+def initialize_database_runtime() -> DatabaseRuntime:
+    global _database_runtime
+    if _database_runtime is not None:
+        return _database_runtime
+    settings = get_settings()
+    engine = create_database_engine(
+        settings.database_url,
+        echo=settings.database_echo,
+    )
+    try:
+        initialize_database(engine)
+    except Exception:
+        engine.dispose()
+        raise
+    _database_runtime = DatabaseRuntime(
+        engine=engine,
+        session_factory=create_session_factory(engine),
+    )
+    return _database_runtime
+
+
+def shutdown_database_runtime() -> None:
+    global _database_runtime
+    for dependency in (
+        get_session_manager,
+        get_inmemory_video_analysis,
+        get_case_pipeline,
+        get_investigation_port,
+        get_analysis_session_store,
+        get_case_store,
+    ):
+        dependency.cache_clear()
+    if _database_runtime is not None:
+        _database_runtime.engine.dispose()
+        _database_runtime = None
 
 
 @lru_cache
@@ -54,12 +110,17 @@ def get_user_directory() -> UserDirectoryPort:
 
 @lru_cache
 def get_case_store() -> CaseStorePort:
-    store = InMemoryCaseStore()
-    for case in demo_cases():
-        store.create(case)
-    for submission in demo_submissions():
-        store.add_submission(submission)
-    return store
+    return SqlAlchemyCaseStore(
+        initialize_database_runtime().session_factory
+    )
+
+
+@lru_cache
+def get_analysis_session_store() -> SqlAlchemyAnalysisSessionStore:
+    return SqlAlchemyAnalysisSessionStore(
+        initialize_database_runtime().session_factory,
+        clock=get_clock(),
+    )
 
 
 def get_clock() -> Clock:
@@ -84,6 +145,7 @@ def get_session_manager() -> SessionManager:
         get_site_context().get_video,
         fake.get_stream,
         fake.run_session,
+        save_session=get_analysis_session_store().save,
     )
 
 
@@ -151,14 +213,25 @@ def get_investigation_port() -> InvestigationPort:
 
 
 def get_fixture_investigation_port() -> InvestigationPort:
-    store = get_case_store()
-    tools = InvestigationTools(
+    return build_fixture_investigation_port(
+        get_case_store(),
         get_site_context(),
+        get_investigation_resolver(),
+    )
+
+
+def build_fixture_investigation_port(
+    store: CaseStorePort,
+    context: SiteContextPort,
+    resolver: InvestigationResolverPort,
+) -> InvestigationPort:
+    tools = InvestigationTools(
+        context,
         FixtureRequirementRetriever(),
     )
     delegate = InvestigationService(
         store,
-        get_investigation_resolver(),
+        resolver,
         FixedInvestigationAgent(tools),
     )
     return FixtureInvestigation(delegate)
@@ -194,10 +267,24 @@ def build_case_workflow(
 def get_case_pipeline() -> CasePipeline:
     store = get_case_store()
     clock = get_clock()
-    workflow = build_case_workflow(
+    return build_fixture_case_pipeline(
         store,
         get_user_directory(),
         get_site_context(),
+        clock,
+    )
+
+
+def build_fixture_case_pipeline(
+    store: CaseStorePort,
+    users: UserDirectoryPort,
+    context: SiteContextPort,
+    clock: Clock,
+) -> CasePipeline:
+    workflow = build_case_workflow(
+        store,
+        users,
+        context,
         clock,
     )
     settings = get_settings()
@@ -215,7 +302,11 @@ def get_case_pipeline() -> CasePipeline:
         store,
         workflow,
         vlm,
-        get_fixture_investigation_port(),
+        build_fixture_investigation_port(
+            store,
+            context,
+            DeterministicInvestigationResolver(context),
+        ),
     )
 
 
