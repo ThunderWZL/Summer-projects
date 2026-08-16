@@ -406,6 +406,11 @@
   * 实现：补充 5 个来源的 local_path、parser_version 与 derived_text_sha256；GB 39800.1 文本经 OCR 与人工复核校正后重建。
   * 验证：`cd backend && .venv/bin/python scripts/check_rag_topk.py`，五类 PPE 查询命中正确条款；`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，见问题与处理）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
+* 20:48 `refactor(config): 站点上下文与用户目录改为配置驱动`
+  * 完成：站点上下文与用户目录的演示数据全部迁入 JSON 配置，替换代码硬编码；视频路径、时长、场景时间、作业票时间窗与用户列表改为可配置。
+  * 实现：新增 `users.json` 并让 `DemoUserDirectory` 从配置加载；扩展 `scene_assignments.json` 与 `_SceneAssignment`/`_SceneAssignments` 模型，`MemorySiteContext` 从配置读取视频与作业票字段；`fixture_candidates` 自持场景起始时间常量。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，与本次无关）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
@@ -416,3 +421,4 @@
 
 * 推送 `fix/case-store-runtime-wiring` 任务分支，交由项目负责人在 `dev` 集成验收。
 * 推送 `chore/rag-authoritative-index` 任务分支，交由项目负责人在 `dev` 集成验收。
+* 推送 `chore/site-context-config-driven` 任务分支，交由项目负责人在 `dev` 集成验收。
