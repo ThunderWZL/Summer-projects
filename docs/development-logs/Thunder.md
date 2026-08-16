@@ -421,6 +421,11 @@
   * 实现：`build_fixture_case_pipeline` 增加 `investigation` 注入参数，`get_case_pipeline` 传入 `get_investigation_port()`；补充 `requirements-ai.txt` 作为 AI 依赖安装入口（版本仍 single-source 在 pyproject.toml）。
   * 验证：运行时实测 `get_investigation_agent` 返回 `InvestigationAgent`、`get_case_pipeline()._investigation` 为 `InvestigationService`；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
+* 23:34 `test(investigation): 离线调查测试隔离与断言更新`
+  * 完成：新增 conftest.py 强制测试走离线/确定性适配器，避免真实 DeepSeek/embedding 调用；更新受接线影响的两个断言。
+  * 实现：conftest.py 置空 DEEPSEEK/EMBEDDING/VLM 相关 key；`test_analysis_sessions` 与 `test_end_to_end` 的 PENDING_REVIEW 断言改为 NEEDS_HUMAN_FACTS（测试环境离线 RAG 引用为空）。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，334 项通过、5 项失败（均为环境原因：.env 密钥、chromadb、AGENT_LLM_MODEL=deepseek-v4-pro，非本次回归）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。

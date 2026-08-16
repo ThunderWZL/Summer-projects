@@ -231,7 +231,7 @@ def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
     assert received[4].payload.version == 2
     assert [event.payload.status for event in received[5:7]] == [
         "INVESTIGATING",
-        "PENDING_REVIEW",
+        "NEEDS_HUMAN_FACTS",
     ]
     assert [event.payload.version for event in received[5:7]] == [3, 4]
     assert (finished.payload.candidate_count, finished.payload.case_count) == (1, 1)
