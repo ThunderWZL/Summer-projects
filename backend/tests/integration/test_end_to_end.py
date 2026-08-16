@@ -290,7 +290,7 @@ def test_six_demo_channels_expose_the_frozen_explainable_outcomes() -> None:
 
     assert details[1]["snapshot"]["status"] == "NEEDS_HUMAN_FACTS"
     assert details[1]["snapshot"]["investigation"]["missing_fields"]
-    assert details[2]["snapshot"]["status"] == "PENDING_REVIEW"
+    assert details[2]["snapshot"]["status"] == "NEEDS_HUMAN_FACTS"
     assert details[2]["snapshot"]["candidate"]["last_seen_ms"] - details[2]["snapshot"]["candidate"]["first_seen_ms"] == 1000
     assert len(details[2]["snapshot"]["candidate"]["frames"]) == 3
     assert "gloves" in details[3]["snapshot"]["investigation"]["required_ppe"]

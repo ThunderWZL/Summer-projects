@@ -272,6 +272,7 @@ def get_case_pipeline() -> CasePipeline:
         get_user_directory(),
         get_site_context(),
         clock,
+        investigation=get_investigation_port(),
     )
 
 
@@ -280,6 +281,7 @@ def build_fixture_case_pipeline(
     users: UserDirectoryPort,
     context: SiteContextPort,
     clock: Clock,
+    investigation: InvestigationPort | None = None,
 ) -> CasePipeline:
     workflow = build_case_workflow(
         store,
@@ -298,15 +300,17 @@ def build_fixture_case_pipeline(
         max_retries=settings.vlm_max_retries,
         retry_delay_seconds=settings.vlm_retry_delay_seconds,
     )
+    if investigation is None:
+        investigation = build_fixture_investigation_port(
+            store,
+            context,
+            DeterministicInvestigationResolver(context),
+        )
     return CasePipeline(
         store,
         workflow,
         vlm,
-        build_fixture_investigation_port(
-            store,
-            context,
-            DeterministicInvestigationResolver(context),
-        ),
+        investigation,
     )
 
 
