@@ -411,6 +411,11 @@
   * 实现：新增 `users.json` 并让 `DemoUserDirectory` 从配置加载；扩展 `scene_assignments.json` 与 `_SceneAssignment`/`_SceneAssignments` 模型，`MemorySiteContext` 从配置读取视频与作业票字段；`fixture_candidates` 自持场景起始时间常量。
   * 验证：`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，与本次无关）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
+* 21:09 `fix(demo): 假分析分阶段延时避免前端错过完成事件`
+  * 完成：修复点击「开始分析」后前端卡在「分析中」的问题；fixture 假分析由约 10ms 改为分阶段约 3 秒，使前端 WebSocket 在 SESSION_FINISHED 之前完成订阅。
+  * 实现：`InMemoryVideoAnalysis.run_session` 在 STARTING/READING/INFERENCING 阶段间增加 `asyncio.sleep`，进度可视化且规避 EventHub live-only 不重放导致的竞态。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_session_manager_sql_persistence.py tests/services/test_case_pipeline.py`，13 项通过；实测 POST 会话到生成案例耗时 3.3s；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
