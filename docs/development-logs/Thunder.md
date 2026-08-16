@@ -416,6 +416,11 @@
   * 实现：`InMemoryVideoAnalysis.run_session` 在 STARTING/READING/INFERENCING 阶段间增加 `asyncio.sleep`，进度可视化且规避 EventHub live-only 不重放导致的竞态。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_session_manager_sql_persistence.py tests/services/test_case_pipeline.py`，13 项通过；实测 POST 会话到生成案例耗时 3.3s；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
+* 23:29 `feat(investigation): 案件流水线接入真实调查 agent`
+  * 完成：案件流水线 `get_case_pipeline` 改用真实调查端口，运行时调查走真实 DeepSeek agent 与真实 RAG 检索，不再使用 fixture 调查。
+  * 实现：`build_fixture_case_pipeline` 增加 `investigation` 注入参数，`get_case_pipeline` 传入 `get_investigation_port()`；补充 `requirements-ai.txt` 作为 AI 依赖安装入口（版本仍 single-source 在 pyproject.toml）。
+  * 验证：运行时实测 `get_investigation_agent` 返回 `InvestigationAgent`、`get_case_pipeline()._investigation` 为 `InvestigationService`；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
