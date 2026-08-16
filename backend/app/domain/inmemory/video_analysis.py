@@ -51,22 +51,26 @@ class InMemoryVideoAnalysis:
     async def run_session(
         self, session: AnalysisSession, manager: SessionManager
     ) -> None:
-        await asyncio.sleep(0.01)
         video = self._context.get_video(session.video_id)
         if video is None:
             return
+        # 分阶段停留，避免 fixture 分析过快导致前端 WebSocket 订阅尚未建立
+        # 就错过 SESSION_FINISHED（EventHub 为 live-only 不重放），同时让进度可见。
+        await asyncio.sleep(0.3)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.STARTING,
             progress=0.0,
             message="analysis session started",
         )
+        await asyncio.sleep(0.8)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.READING,
             progress=0.25,
             message="reading demo video",
         )
+        await asyncio.sleep(1.0)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.INFERENCING,
@@ -74,6 +78,7 @@ class InMemoryVideoAnalysis:
             message="running deterministic demo inference",
             inference_fps=12.0,
         )
+        await asyncio.sleep(1.0)
         candidate = candidate_for_video(video, session.session_id)
         if candidate is not None:
             case = self._pipeline.ensure_case(candidate)
