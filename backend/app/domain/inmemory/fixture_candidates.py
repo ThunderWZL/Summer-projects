@@ -1,8 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from app.contracts import CandidateEvidence, EvidenceKind, FrameRole, PpeType
-from app.domain.inmemory.site_context import SCENARIO_STARTED_AT
 from app.domain.site_context import VideoInfo
+
+_SCENARIO_STARTED_AT = datetime.fromisoformat("2026-08-07T09:00:00+08:00")
 
 
 _SCENES: dict[str, tuple[PpeType, EvidenceKind, int]] = {
@@ -72,7 +73,7 @@ def build_fixture_candidate(
                 "minimum_frames": 3,
                 "window_ms": 2_000,
             },
-            "occurred_at": SCENARIO_STARTED_AT
+            "occurred_at": _SCENARIO_STARTED_AT
             + timedelta(milliseconds=representative_ms),
             "first_seen_ms": representative_ms - 500,
             "last_seen_ms": representative_ms + 500,
