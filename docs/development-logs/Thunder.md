@@ -387,6 +387,7 @@
 ### 当日目标
 
 * 将案例 API 与分析流程接入 SQLAlchemy 仓储，保证分析会话先于案例持久化并支持进程内仓储重建后读取。
+* 接入 5 个 RAG 权威来源的抽取语料与复核签核，并修复真实嵌入端点批量限制，使需求检索可返回权威引用。
 
 ### 开发记录
 
@@ -395,11 +396,23 @@
   * 实现：新增数据库 URL 与 SQL 回显配置、FastAPI 数据库启动和释放生命周期、分析会话 SQL 保存适配器；保留站点上下文种子，并将案例 API 的 demo 数据改为显式测试依赖。
   * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，339 项通过、1 项跳过；`cd frontend && npm run build`，失败，当前 `node_modules` 缺少已声明的 `vitest` 与 `@testing-library/react` 等开发依赖；`git diff --check`，通过；后端未配置 lint 和类型检查，前端未配置 lint。
 
+* 20:16 `fix(rag): 分批嵌入兼容单次请求上限`
+  * 完成：OpenAI 兼容嵌入端点按批次发送文本，规避 DashScope 单次请求 input 不超过 20 条的 400 报错，使真实向量索引可正常构建。
+  * 实现：`OpenAIEmbeddingClient.embed_documents` 按每批 20 条循环请求并拼接向量，复用懒加载 SDK 与维度回填逻辑。
+  * 验证：`cd backend && .venv/bin/python scripts/check_rag_topk.py`，五类 PPE 查询返回真实权威引用；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 20:22 `chore(rag): 权威来源清单接入抽取元数据与复核签核`
+  * 完成：5 个权威来源清单接入抽取元数据并将 extraction_status 置为 ready、human_review_status 置为 reviewed，使 RAG 真实索引可读取完整语料。
+  * 实现：补充 5 个来源的 local_path、parser_version 与 derived_text_sha256；GB 39800.1 文本经 OCR 与人工复核校正后重建。
+  * 验证：`cd backend && .venv/bin/python scripts/check_rag_topk.py`，五类 PPE 查询命中正确条款；`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，见问题与处理）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
 * 前端构建失败与本次纯后端接线无关，未修改前端依赖或源码。
+* 真实索引构建暴露三个环境问题：DashScope embedding 单次请求 input 上限 20 条，已分批修复；venv 缺少 `openai`、`chromadb`、`socksio`，已安装；后端 pytest 的 5 个失败均为环境原因——`.env` 含真实 VLM/Agent/Embedding 密钥导致配置默认值测试失败，安装 chromadb 后 `test_chroma_lazy` 的「依赖未安装」前提不再成立，均非本次改动回归。
 
 ### 后续计划
 
 * 推送 `fix/case-store-runtime-wiring` 任务分支，交由项目负责人在 `dev` 集成验收。
+* 推送 `chore/rag-authoritative-index` 任务分支，交由项目负责人在 `dev` 集成验收。

@@ -70,8 +70,13 @@ class OpenAIEmbeddingClient:
         return self._client
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        response = self._get_client().embeddings.create(model=self.model, input=list(texts))
-        values = [list(item.embedding) for item in response.data]
+        # DashScope 等 OpenAI 兼容端点限制单次请求 input 不超过 20 条，分批嵌入。
+        batch_size = 20
+        values: list[list[float]] = []
+        for start in range(0, len(texts), batch_size):
+            batch = list(texts[start : start + batch_size])
+            response = self._get_client().embeddings.create(model=self.model, input=batch)
+            values.extend(list(item.embedding) for item in response.data)
         if values:
             self.dimension = len(values[0])
         return values
