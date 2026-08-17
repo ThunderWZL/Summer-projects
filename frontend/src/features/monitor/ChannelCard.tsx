@@ -34,7 +34,7 @@ export function ChannelCard({
   const sceneTitle = formatSceneTitle(video.video_id, video.title);
   const taskLabel = formatTaskLabel(configuredTask);
   const label = `${video.camera_id} ${cameraName}`;
-  const status = starting ? "启动中" : active ? "正在分析" : "未开始分析";
+  const status = starting ? "启动中" : active ? "正在分析" : "实时播放";
 
   return (
     <section
@@ -61,10 +61,12 @@ export function ChannelCard({
         ) : (
           <video
             src={video.content_url}
-            aria-label={`${video.camera_id} 演示预览`}
+            aria-label={`${video.camera_id} 实时画面`}
+            autoPlay
+            loop
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
           />
         )}
       </div>

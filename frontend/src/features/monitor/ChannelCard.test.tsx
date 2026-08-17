@@ -5,7 +5,7 @@ import { ChannelCard } from "./ChannelCard";
 import { demoVideos } from "../../test/fixtures";
 
 describe("ChannelCard", () => {
-  it("labels the channel, simulated context, preview, and start action", () => {
+  it("keeps the channel preview playing before analysis starts", () => {
     const onStart = vi.fn();
     const video = {
       ...demoVideos[0],
@@ -32,7 +32,13 @@ describe("ChannelCard", () => {
     expect(screen.getByText("物料切割｜防护齐全")).toBeTruthy();
     expect(screen.getByText(/当前作业.*物料切割/)).toBeTruthy();
     expect(screen.queryByText(/安全1|MATERIAL_CUTTING/)).toBeNull();
-    expect(screen.getByText("未开始分析")).toBeTruthy();
+    expect(screen.getByText("实时播放")).toBeTruthy();
+    const preview = screen.getByLabelText("CAM-01 实时画面");
+    expect(preview).toBeInstanceOf(HTMLVideoElement);
+    expect((preview as HTMLVideoElement).autoplay).toBe(true);
+    expect((preview as HTMLVideoElement).loop).toBe(true);
+    expect((preview as HTMLVideoElement).muted).toBe(true);
+    expect((preview as HTMLVideoElement).playsInline).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "开始分析 CAM-01" }));
     expect(onStart).toHaveBeenCalledWith(video);
