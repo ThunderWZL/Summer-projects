@@ -54,35 +54,35 @@ class FixedVlmAdapter:
                 AssociationVerdict.MATCHED,
                 True,
             )
-            reason = "确认违规：确认未佩戴安全装备"
+            reason = "确认违规：目标装备缺失；确认未佩戴安全装备"
         elif self._scenario is FixedVlmScenario.REJECT:
             verdict, association, sufficient = (
                 "REJECTED",
                 AssociationVerdict.MATCHED,
                 True,
             )
-            reason = "排除违规：确认人员已正确佩戴安全装备"
+            reason = "排除违规：目标装备已佩戴；确认人员已正确佩戴安全装备"
         elif self._scenario is FixedVlmScenario.UNCERTAIN:
             verdict, association, sufficient = (
                 "UNCERTAIN",
                 AssociationVerdict.AMBIGUOUS,
                 False,
             )
-            reason = "无法确认：画面无法明确判断"
+            reason = "无法确认：证据不足；画面无法明确判断"
         elif evidence_sufficient:
             verdict, association, sufficient = (
                 "CONFIRMED",
                 AssociationVerdict.MATCHED,
                 True,
             )
-            reason = "确认违规：确认未佩戴安全装备"
+            reason = "确认违规：目标装备缺失；确认未佩戴安全装备"
         else:
             verdict, association, sufficient = (
                 "UNCERTAIN",
                 AssociationVerdict.AMBIGUOUS,
                 False,
             )
-            reason = "无法确认：证据不足"
+            reason = "无法确认：证据不足；画面信息不足"
 
         return {
             "candidate_id": candidate.candidate_id,
