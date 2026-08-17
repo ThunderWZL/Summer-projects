@@ -12,7 +12,7 @@ from app.contracts import (
 from app.domain.case_store import CaseStorePort
 from app.domain.case_workflow import CaseWorkflow, RecordVlmReview
 from app.modules.vlm_review.errors import VlmProcessingFailed
-from app.modules.vlm_review.parser import parse
+from app.modules.vlm_review.parser import VlmParseError, parse
 from app.modules.vlm_review.port import VlmModelPort, VlmRequest
 
 
@@ -91,6 +91,18 @@ class VlmReviewService:
                 if not exc.retryable:
                     raise
                 last_failure = exc
+            except VlmParseError as exc:
+                last_failure = exc
+                request = request.model_copy(
+                    update={
+                        "prompt": (
+                            request.prompt
+                            + "\n上次输出存在语义错误："
+                            + exc.detail
+                            + "。请重新检查画面，并严格按结论定义纠正 JSON。"
+                        )
+                    }
+                )
             except Exception as exc:
                 last_failure = exc
 

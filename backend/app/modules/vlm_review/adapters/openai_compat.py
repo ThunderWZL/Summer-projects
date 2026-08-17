@@ -223,7 +223,19 @@ class OpenAICompatibleVlmAdapter:
         return (
             "候选元数据："
             + json.dumps(evidence, ensure_ascii=False)
-            + "\n请逐帧确认同一人员与目标 PPE 的关联，排除海报、镜像和遮挡。"
+            + "\n复核对象始终是：候选人员是否缺少目标防护装备。"
+            + "CONFIRMED 表示确认候选人员缺少目标防护装备；"
+            + "REJECTED 表示确认候选并非违规，例如已正确佩戴目标装备或属于伪影；"
+            + "UNCERTAIN 表示遮挡、部位不可见或证据不足，无法作出结论。"
+            + "association 只表示证据帧是否属于同一名候选人员，"
+            + "不得用它表示防护装备是否存在；同一人员应填写 MATCHED。"
+            + "person_box 是人员跟踪框，不是目标防护装备框；"
+            + "即使人员框覆盖范围较大，也必须观察完整画面中的目标身体部位。"
+            + "evidence_sufficient 表示证据是否足以支持当前 verdict；"
+            + "证据不足时必须使用 UNCERTAIN，不能使用 REJECTED。"
+            + "reason 必须根据 verdict 分别以“确认违规：| 排除违规：| 无法确认：”"
+            + "三者之一开头，且内容必须与结论一致。"
+            + "请逐帧排除海报、镜像和遮挡。"
             + "只能输出一个 JSON 对象，不得添加 Markdown 或额外字段。输出结构："
             + json.dumps(schema, ensure_ascii=False)
         )

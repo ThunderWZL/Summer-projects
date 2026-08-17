@@ -133,6 +133,10 @@ def test_complete_sends_local_evidence_as_bounded_base64_images(tmp_path) -> Non
     assert "candidate-01" in prompt
     assert "track-17" in prompt
     assert "vest" in prompt
+    assert "CONFIRMED 表示确认候选人员缺少目标防护装备" in prompt
+    assert "REJECTED 表示确认候选并非违规" in prompt
+    assert "association 只表示证据帧是否属于同一名候选人员" in prompt
+    assert "确认违规：| 排除违规：| 无法确认：" in prompt
 
 
 def test_missing_evidence_is_a_non_retryable_failure(tmp_path) -> None:

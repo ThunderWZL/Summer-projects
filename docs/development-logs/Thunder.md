@@ -501,6 +501,10 @@
   * 完成：监控台、案件中心、案件详情和人工操作区域不再直接展示后端字段、枚举、模型标识、责任主体 ID 或演示视频文件派生名称。
   * 实现：六路机位与区域统一显示业务名称；案件状态、作业、调查事实、冲突、工具、模型结论及时间线均转换为中文表述；事实补充改为中文作业下拉框，完整案件 ID 仅保留为辅助标题信息。
   * 验证：`cd frontend && npm test`，12 个测试文件共 49 项通过；`cd frontend && npm run build`，构建成功；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json frontend/src/features/cases/format.ts frontend/src/features/cases/CaseCenterPage.tsx frontend/src/features/cases/CasesWorkspace.tsx frontend/src/features/monitor/ChannelCard.tsx frontend/src/features/review/CaseActionPanel.tsx frontend/src/features/review/CaseDetailPage.tsx`，未发现问题；项目未配置独立 lint，未运行。
+* 20:16 `fix(vlm): 阻止语义矛盾复核入库`
+  * 完成：修复“理由确认未佩戴防护装备，但结论却排除违规”的语义矛盾；矛盾结果不会进入案件状态机，重试耗尽时保持候选待复核状态。
+  * 实现：统一 `CONFIRMED`、`REJECTED`、`UNCERTAIN` 的违规语义、人员关联含义、证据充分性和理由前缀；真实模型提示明确人员框不是防护装备框；解析层校验结论、关联、证据标记与理由一致性，并在重试提示中反馈具体语义错误；固定适配器同步将证据不足归为 `UNCERTAIN`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/services/test_case_pipeline.py tests/modules/video_analysis/test_runtime.py -q`，54 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-semantics-build`，构建成功；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/api/test_analysis_sessions.py tests/integration/test_end_to_end.py -q` 输出 10 个通过标记但未返回最终汇总和退出码，未计为通过；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
@@ -514,6 +518,7 @@
 * Python SDK 首次受沙箱代理权限限制而超时；用户明确同意发送本地演示证据帧后，以获准网络权限完成真实调用。本地 `.env` 启用真实 YOLO 后曾使离线 MJPEG 测试误走真实推理；测试会话显式固定 `VISION_PROVIDER=fixture` 后 9 项 API 测试全部通过。
 * Ultralytics 的基础依赖不包含 ByteTrack 所需的 `lap`，真实视频分析首次调用 `model.track()` 时触发模块缺失；已安装依赖并在项目 `vision` 可选依赖中显式声明，避免新环境再次遗漏。
 * 前端目录遗留的忽略文件 `vite.config.js` 被 Vite 优先加载，且其中没有 `/evidence` 代理，导致图片请求返回前端 HTML；各脚本已显式指定 TypeScript 配置并补充证据代理，真实请求验证通过。
+* 分析接口与端到端测试完成 10 个用例后未正常退出，未获得可核验的 pytest 汇总与退出码；本次以 VLM、案件流水线和视觉运行时 54 项明确通过的针对性测试作为提交门禁，不声称该组合测试通过。
 
 ### 后续计划
 

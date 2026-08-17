@@ -22,7 +22,7 @@ def valid_content() -> dict:
         "poster_or_reflection": False,
         "evidence_sufficient": True,
         "evidence_timestamps_ms": [1_000, 1_500, 2_000],
-        "reason": "头部持续可见且未检测到安全帽",
+        "reason": "确认违规：头部持续可见且未检测到安全帽",
     }
 
 
@@ -111,6 +111,96 @@ def test_negative_evidence_timestamps_are_rejected() -> None:
         parse(
             raw,
             model_provider="fixture",
+            model_parameters={},
+            reviewed_at=REVIEWED_AT,
+        )
+
+
+def test_semantically_conflicting_rejected_review_is_rejected() -> None:
+    payload = {
+        **valid_content(),
+        "verdict": "REJECTED",
+        "association": "AMBIGUOUS",
+        "reason": (
+            "候选框主要覆盖人员腰部工具带区域，未包含手部。"
+            "观察帧中人员双手裸露，未见手套，判定为缺失手套，"
+            "故拒绝该PPE佩戴关联。"
+        ),
+    }
+    raw = make_raw(json.dumps(payload, ensure_ascii=False))
+
+    with pytest.raises(VlmParseError, match="结论与理由语义不一致"):
+        parse(
+            raw,
+            model_provider="openai_compat",
+            model_parameters={"temperature": 0},
+            reviewed_at=REVIEWED_AT,
+        )
+
+
+def test_rejected_review_accepts_explicit_exclusion_semantics() -> None:
+    payload = {
+        **valid_content(),
+        "verdict": "REJECTED",
+        "evidence_sufficient": True,
+        "reason": "排除违规：人员已正确佩戴安全帽",
+    }
+
+    review = parse(
+        make_raw(json.dumps(payload, ensure_ascii=False)),
+        model_provider="openai_compat",
+        model_parameters={"temperature": 0},
+        reviewed_at=REVIEWED_AT,
+    )
+
+    assert review.verdict is VlmVerdict.REJECTED
+
+
+def test_rejected_review_cannot_use_ambiguous_person_association() -> None:
+    payload = {
+        **valid_content(),
+        "verdict": "REJECTED",
+        "association": "AMBIGUOUS",
+        "evidence_sufficient": True,
+        "reason": "排除违规：人员已正确佩戴安全帽",
+    }
+
+    with pytest.raises(VlmParseError, match="REJECTED.*MATCHED"):
+        parse(
+            make_raw(json.dumps(payload, ensure_ascii=False)),
+            model_provider="openai_compat",
+            model_parameters={},
+            reviewed_at=REVIEWED_AT,
+        )
+
+
+def test_confirmed_review_requires_decisive_evidence_flags() -> None:
+    payload = {
+        **valid_content(),
+        "evidence_sufficient": False,
+    }
+
+    with pytest.raises(VlmParseError, match="CONFIRMED"):
+        parse(
+            make_raw(json.dumps(payload, ensure_ascii=False)),
+            model_provider="openai_compat",
+            model_parameters={},
+            reviewed_at=REVIEWED_AT,
+        )
+
+
+def test_uncertain_review_requires_insufficient_evidence() -> None:
+    payload = {
+        **valid_content(),
+        "verdict": "UNCERTAIN",
+        "association": "AMBIGUOUS",
+        "reason": "无法确认：手部受到遮挡",
+    }
+
+    with pytest.raises(VlmParseError, match="UNCERTAIN"):
+        parse(
+            make_raw(json.dumps(payload, ensure_ascii=False)),
+            model_provider="openai_compat",
             model_parameters={},
             reviewed_at=REVIEWED_AT,
         )

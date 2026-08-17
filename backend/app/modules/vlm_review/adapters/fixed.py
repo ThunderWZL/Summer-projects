@@ -18,7 +18,7 @@ class FixedVlmAdapter:
     """确定性 VLM 适配器，用于测试与契约验证。
 
     AUTO 模式下按候选证据质量决定结论（confidence 过低、或代表帧缺少
-    观察框 → “证据不足”拒绝，否则确认）；其余场景强制返回指定结论，
+    观察框 → “证据不足”不确定，否则确认）；其余场景强制返回指定结论，
     供测试精确复现 confirm / reject / uncertain 三条状态机路径。
     输出结构可被 parser 严格解析，绝不放自然语言。
     """
@@ -54,35 +54,35 @@ class FixedVlmAdapter:
                 AssociationVerdict.MATCHED,
                 True,
             )
-            reason = "确认未佩戴安全装备"
+            reason = "确认违规：确认未佩戴安全装备"
         elif self._scenario is FixedVlmScenario.REJECT:
             verdict, association, sufficient = (
                 "REJECTED",
                 AssociationVerdict.MATCHED,
-                False,
+                True,
             )
-            reason = "证据不足，拒绝确认"
+            reason = "排除违规：确认人员已正确佩戴安全装备"
         elif self._scenario is FixedVlmScenario.UNCERTAIN:
             verdict, association, sufficient = (
                 "UNCERTAIN",
                 AssociationVerdict.AMBIGUOUS,
                 False,
             )
-            reason = "画面无法明确判断"
+            reason = "无法确认：画面无法明确判断"
         elif evidence_sufficient:
             verdict, association, sufficient = (
                 "CONFIRMED",
                 AssociationVerdict.MATCHED,
                 True,
             )
-            reason = "确认未佩戴安全装备"
+            reason = "确认违规：确认未佩戴安全装备"
         else:
             verdict, association, sufficient = (
-                "REJECTED",
-                AssociationVerdict.MATCHED,
+                "UNCERTAIN",
+                AssociationVerdict.AMBIGUOUS,
                 False,
             )
-            reason = "证据不足，无法确认违规"
+            reason = "无法确认：证据不足"
 
         return {
             "candidate_id": candidate.candidate_id,
