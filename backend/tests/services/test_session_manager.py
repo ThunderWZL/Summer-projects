@@ -6,6 +6,7 @@ from app.contracts import AnalysisEvent, AnalysisStage
 from app.domain.case_store import CaseQuery
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases
+from app.domain.investigation import InvestigationAgentFailed
 from app.domain.video_analysis import (
     AnalysisSession,
     AnalysisSessionNotActive,
@@ -289,4 +290,39 @@ def test_video_processing_failure_becomes_retryable_session_failed() -> None:
     assert event.event_type == "SESSION_FAILED"
     assert event.payload.error_code == "VIDEO_ANALYSIS_PROCESSING_FAILED"
     assert event.payload.message == "unable to read configured video"
+    assert event.payload.retryable is True
+
+
+def test_investigation_failure_becomes_retryable_session_failed() -> None:
+    async def scenario() -> AnalysisEvent:
+        release = asyncio.Event()
+
+        async def stream(_session_id: str):
+            yield b"frame"
+
+        async def fail(
+            _session: AnalysisSession, _manager: SessionManager
+        ) -> None:
+            await release.wait()
+            raise InvestigationAgentFailed("DeepSeek request failed")
+
+        manager = SessionManager(
+            EventHub(),
+            lambda _video_id: object(),
+            stream,
+            fail,
+        )
+        session = await manager.start_session("video-01")
+        events = manager.subscribe_events(session.session_id)
+        receive = await _start_receive(events)
+        release.set()
+        event = await asyncio.wait_for(receive, timeout=0.2)
+        await events.aclose()
+        return event
+
+    event = asyncio.run(scenario())
+
+    assert event.event_type == "SESSION_FAILED"
+    assert event.payload.error_code == "INVESTIGATION_PROCESSING_FAILED"
+    assert event.payload.message == "DeepSeek request failed"
     assert event.payload.retryable is True

@@ -17,6 +17,7 @@ from app.contracts import (
     SessionProgressPayload,
     VlmReviewedPayload,
 )
+from app.domain.investigation import InvestigationError
 from app.domain.video_analysis import (
     AnalysisSession,
     AnalysisSessionNotActive,
@@ -213,7 +214,11 @@ class SessionManager(VideoAnalysisPort):
     async def _handle_processing_failed(
         self,
         session_id: str,
-        error: VlmProcessingFailed | VideoAnalysisProcessingFailed,
+        error: (
+            VlmProcessingFailed
+            | VideoAnalysisProcessingFailed
+            | InvestigationError
+        ),
     ) -> AnalysisEvent:
         self._require_session(session_id)
         self._streamable_session_ids.discard(session_id)
@@ -237,6 +242,8 @@ class SessionManager(VideoAnalysisPort):
         except VlmProcessingFailed as error:
             await self.handle_vlm_processing_failed(session.session_id, error)
         except VideoAnalysisProcessingFailed as error:
+            await self._handle_processing_failed(session.session_id, error)
+        except InvestigationError as error:
             await self._handle_processing_failed(session.session_id, error)
 
     def _require_session(self, session_id: str) -> AnalysisSession:

@@ -1,4 +1,9 @@
-from app.contracts import CandidateEvidence, CaseSnapshot, CaseStatus
+from app.contracts import (
+    CandidateEvidence,
+    CaseSnapshot,
+    CaseStatus,
+    InvestigationResult,
+)
 from app.domain.case_store import CaseStorePort
 from app.domain.case_workflow import (
     CaseNotFound,
@@ -52,13 +57,19 @@ class CasePipeline:
             snapshot = refreshed
         if snapshot.status is CaseStatus.VLM_REJECTED:
             return snapshot
+        investigation: InvestigationResult | None = None
         if snapshot.status is CaseStatus.VLM_REVIEWED:
-            snapshot = self._workflow.apply(snapshot.case_id, StartInvestigation(snapshot.version))
-        if snapshot.status is CaseStatus.INVESTIGATING:
-            result = self._investigation.investigate(snapshot.case_id)
+            investigation = self._investigation.investigate(snapshot.case_id)
             snapshot = self._workflow.apply(
                 snapshot.case_id,
-                RecordInvestigation(snapshot.version, result),
+                StartInvestigation(snapshot.version),
+            )
+        if snapshot.status is CaseStatus.INVESTIGATING:
+            if investigation is None:
+                investigation = self._investigation.investigate(snapshot.case_id)
+            snapshot = self._workflow.apply(
+                snapshot.case_id,
+                RecordInvestigation(snapshot.version, investigation),
             )
         return snapshot
 

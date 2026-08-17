@@ -16,6 +16,7 @@ from app.contracts import (
 from app.domain.case_workflow import CaseWorkflow, CommandNotAllowed
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_candidates import build_fixture_candidate
+from app.domain.investigation import InvestigationAgentFailed
 from app.modules.vlm_review.adapters.fixed import FixedVlmAdapter, FixedVlmScenario
 from app.modules.vlm_review.errors import VlmProcessingFailed
 from app.modules.vlm_review.service import VlmReviewService
@@ -34,12 +35,19 @@ class DemoActors:
 
 
 class FixedInvestigation:
-    def __init__(self, result: InvestigationResult) -> None:
+    def __init__(
+        self,
+        result: InvestigationResult,
+        error: InvestigationAgentFailed | None = None,
+    ) -> None:
         self.result = result
+        self.error = error
         self.case_ids: list[str] = []
 
     def investigate(self, case_id: str) -> InvestigationResult:
         self.case_ids.append(case_id)
+        if self.error is not None:
+            raise self.error
         return self.result
 
 
@@ -78,6 +86,7 @@ def make_pipeline(
     *,
     scenario: FixedVlmScenario = FixedVlmScenario.AUTO,
     investigation_result: InvestigationResult | None = None,
+    investigation_error: InvestigationAgentFailed | None = None,
     model=None,
 ) -> tuple[CasePipeline, InMemoryCaseStore, CaseWorkflow, FixedInvestigation]:
     store = InMemoryCaseStore()
@@ -87,7 +96,10 @@ def make_pipeline(
         clock=lambda: NOW,
         responsible_party_is_eligible=lambda _snapshot, _party_id: True,
     )
-    agent = FixedInvestigation(investigation_result or investigation())
+    agent = FixedInvestigation(
+        investigation_result or investigation(),
+        investigation_error,
+    )
     vlm = VlmReviewService(
         store,
         model or FixedVlmAdapter(scenario),
@@ -177,6 +189,23 @@ def test_vlm_technical_failure_preserves_candidate_and_business_timeline() -> No
         [],
     )
     assert investigation_adapter.case_ids == []
+
+
+def test_agent_failure_does_not_leave_case_investigating() -> None:
+    pipeline, store, _, _ = make_pipeline(
+        investigation_error=InvestigationAgentFailed("agent output invalid")
+    )
+    evidence = candidate()
+
+    with pytest.raises(InvestigationAgentFailed, match="output invalid"):
+        asyncio.run(pipeline.process_candidate(evidence))
+
+    stored = store.find_by_candidate(evidence.candidate_id)
+    assert stored is not None
+    assert (stored.status, stored.version) == (CaseStatus.VLM_REVIEWED, 2)
+    assert [transition.to_status for transition in stored.transitions] == [
+        CaseStatus.VLM_REVIEWED
+    ]
 
 
 @pytest.mark.parametrize(

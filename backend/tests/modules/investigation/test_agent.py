@@ -10,6 +10,7 @@ import pytest
 from app.contracts import Citation, PpeType
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.investigation import (
+    InvestigationAgentFailed,
     InvestigationAgentOutputInvalid,
     InvestigationToolRoundsExceeded,
 )
@@ -237,6 +238,38 @@ def test_deepseek_adapter_uses_official_non_thinking_tool_calling(
         "strict": True,
     }
     assert response.tool_calls[0].id == "call-party-456"
+
+
+def test_deepseek_transport_failure_becomes_investigation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingBoundModel:
+        def invoke(self, _messages):
+            raise RuntimeError("connection unavailable")
+
+    class FakeChatDeepSeek:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def bind_tools(self, _schemas, **_kwargs):
+            return FailingBoundModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_deepseek",
+        SimpleNamespace(ChatDeepSeek=FakeChatDeepSeek),
+    )
+    adapter = DeepSeekChatModelAdapter(
+        api_key="configured-secret",
+        model="deepseek-v4-flash",
+        temperature=0,
+        timeout=30,
+        max_retries=2,
+        max_output_tokens=1024,
+    )
+
+    with pytest.raises(InvestigationAgentFailed, match="DeepSeek request failed"):
+        adapter.complete([{"role": "user", "content": "test"}], [])
 
 
 def test_repeated_tool_calls_are_preserved_in_trace() -> None:

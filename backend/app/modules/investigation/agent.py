@@ -182,7 +182,10 @@ class DeepSeekChatModelAdapter:
             tool_choice="auto",
             strict=True,
         )
-        response = model_with_tools.invoke(messages)
+        try:
+            response = model_with_tools.invoke(messages)
+        except Exception as exc:
+            raise InvestigationAgentFailed("DeepSeek request failed") from exc
         try:
             calls = [
                 AgentToolCall(
