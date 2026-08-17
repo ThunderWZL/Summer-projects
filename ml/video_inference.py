@@ -366,6 +366,7 @@ class VideoInferenceRunner:
         *,
         realtime: bool = False,
         max_playback_frames: int | None = None,
+        stop_requested: Callable[[], bool] | None = None,
     ) -> Iterator[InferenceFrame]:
         if max_playback_frames is not None and max_playback_frames <= 0:
             raise ValueError("max_playback_frames must be greater than zero")
@@ -404,6 +405,8 @@ class VideoInferenceRunner:
                 worker.start()
                 worker_started = True
             while True:
+                if stop_requested is not None and stop_requested():
+                    break
                 available, frame = capture.read()
                 if not available:
                     break
