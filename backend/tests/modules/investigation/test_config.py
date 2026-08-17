@@ -153,6 +153,7 @@ AGENT_ENV_KEYS = (
     "AGENT_LLM_MODEL",
     "AGENT_LLM_TIMEOUT_SECONDS",
     "AGENT_LLM_MAX_RETRIES",
+    "AGENT_LLM_MAX_OUTPUT_TOKENS",
     "AGENT_MAX_TOOL_ROUNDS",
     "AGENT_LLM_TEMPERATURE",
 )
@@ -176,6 +177,7 @@ def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.agent_llm_model == "deepseek-v4-flash"
     assert settings.agent_llm_timeout_seconds == 30
     assert settings.agent_llm_max_retries == 2
+    assert settings.agent_llm_max_output_tokens == 1024
     assert settings.agent_max_tool_rounds == 6
     assert settings.agent_llm_temperature == 0
 
@@ -197,6 +199,7 @@ def test_database_settings_load_from_environment(
     [
         ("agent_llm_timeout_seconds", 0),
         ("agent_llm_max_retries", -1),
+        ("agent_llm_max_output_tokens", 0),
         ("agent_max_tool_rounds", 0),
         ("agent_llm_temperature", -0.01),
         ("agent_llm_temperature", 2.01),
@@ -303,6 +306,7 @@ def test_configured_deepseek_without_ai_extra_fails_explicitly(
         temperature=0,
         timeout=30,
         max_retries=2,
+        max_output_tokens=1024,
     )
 
     with pytest.raises(InvestigationAgentFailed, match="langchain-deepseek is required"):

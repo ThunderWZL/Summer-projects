@@ -134,12 +134,14 @@ class DeepSeekChatModelAdapter:
         temperature: float,
         timeout: float,
         max_retries: int,
+        max_output_tokens: int,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._temperature = temperature
         self._timeout = timeout
         self._max_retries = max_retries
+        self._max_output_tokens = max_output_tokens
         self._client: Any | None = None
 
     def complete(
@@ -161,12 +163,24 @@ class DeepSeekChatModelAdapter:
                 temperature=self._temperature,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                max_tokens=self._max_output_tokens,
+                model_kwargs={"response_format": {"type": "json_object"}},
                 extra_body={"thinking": {"type": "disabled"}},
             )
+        strict_tool_schemas = [
+            {
+                **schema,
+                "function": {
+                    **schema["function"],
+                    "strict": True,
+                },
+            }
+            for schema in tool_schemas
+        ]
         model_with_tools = self._client.bind_tools(
-            tool_schemas,
+            strict_tool_schemas,
             tool_choice="auto",
-            strict=False,
+            strict=True,
         )
         response = model_with_tools.invoke(messages)
         try:
@@ -225,6 +239,14 @@ rectification_reason must be supplied together or all be null. citation_indexes
 are zero-based indexes into citations returned by the requirements tool.
 """
 
+_AGENT_JSON_CORRECTION_PROMPT = """Your previous response was not a valid JSON
+object. Return only one JSON object with exactly this shape and no Markdown:
+{"recommendation": "text or null", "responsible_party_id": "id or null",
+"due_at": "ISO 8601 datetime or null", "rectification_reason": "text or null",
+"citation_indexes": [0]}. The three rectification fields must all be non-null or
+all be null. Use only citation indexes and responsible party IDs returned by tools.
+"""
+
 
 class InvestigationAgent:
     def __init__(
@@ -233,10 +255,12 @@ class InvestigationAgent:
         tools: InvestigationTools,
         *,
         max_tool_rounds: int = 6,
+        max_output_retries: int = 2,
     ) -> None:
         self._chat_model = chat_model
         self._tools = tools
         self._max_tool_rounds = max_tool_rounds
+        self._max_output_retries = max_output_retries
 
     def investigate(self, context: AgentInvestigationContext) -> AgentRunResult:
         messages: list[dict[str, Any]] = [
@@ -257,6 +281,7 @@ class InvestigationAgent:
         eligible_party_ids: set[str] = set()
         tool_trace: list[str] = []
         tool_rounds = 0
+        output_retries = 0
         searched_requirements = False
         while True:
             response = self._chat_model.complete(messages, tool_schemas)
@@ -304,8 +329,29 @@ class InvestigationAgent:
                         }
                     )
                 continue
-            draft = self._parse_draft(response.content)
-            has_recommendation = draft.recommendation is not None or draft.responsible_party_id is not None
+            try:
+                draft = self._parse_draft(response.content)
+            except InvestigationAgentOutputInvalid:
+                if output_retries >= self._max_output_retries:
+                    raise
+                output_retries += 1
+                messages.extend(
+                    [
+                        {
+                            "role": "assistant",
+                            "content": response.content or "",
+                        },
+                        {
+                            "role": "user",
+                            "content": _AGENT_JSON_CORRECTION_PROMPT,
+                        },
+                    ]
+                )
+                continue
+            has_recommendation = (
+                draft.recommendation is not None
+                or draft.responsible_party_id is not None
+            )
             if has_recommendation and not searched_requirements:
                 raise InvestigationAgentOutputInvalid("recommendation requires a requirements query")
             if draft.responsible_party_id is not None and draft.responsible_party_id not in eligible_party_ids:

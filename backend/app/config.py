@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     agent_llm_model: str = "deepseek-v4-flash"
     agent_llm_timeout_seconds: float = Field(default=30, gt=0)
     agent_llm_max_retries: int = Field(default=2, ge=0)
+    agent_llm_max_output_tokens: int = Field(default=1024, gt=0)
     agent_max_tool_rounds: int = Field(default=6, ge=1)
     agent_llm_temperature: float = Field(default=0, ge=0, le=2)
     embedding_api_key: str | None = None

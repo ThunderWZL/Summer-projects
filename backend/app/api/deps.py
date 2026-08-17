@@ -232,6 +232,7 @@ def get_investigation_agent() -> InvestigationAgentPort:
             temperature=settings.agent_llm_temperature,
             timeout=settings.agent_llm_timeout_seconds,
             max_retries=settings.agent_llm_max_retries,
+            max_output_tokens=settings.agent_llm_max_output_tokens,
         ),
         tools,
         max_tool_rounds=settings.agent_max_tool_rounds,

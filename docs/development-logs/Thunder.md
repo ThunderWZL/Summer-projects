@@ -509,6 +509,10 @@
   * 完成：阻止模型通过正确结论前缀包装相反理由正文；“排除违规”不能再描述未佩戴、裸露或装备缺失，“确认违规”不能描述装备已经佩戴。
   * 实现：为三类结论规定可机器校验的理由开头，继续保留后续中文说明；解析层检查理由正文的装备缺失与佩戴方向，真实提示禁止双重否定并要求正文不得反转开头结论；固定适配器同步输出相同格式。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/services/test_case_pipeline.py tests/modules/video_analysis/test_runtime.py -q`，57 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-reason-semantics-build`，构建成功；真实 CAM-04 复核返回 `CONFIRMED`、`MATCHED`、证据充分及“确认违规：目标装备缺失；”，未再产生反向结论；后端未配置独立 lint 和类型检查，未运行。
+* 20:52 `fix(agent): 强制DeepSeek结构化输出`
+  * 完成：调查 Agent 按 DeepSeek 官方 JSON Output 要求返回严格 JSON，非 JSON 最终回答会携带固定结构自动纠正后重试。
+  * 实现：DeepSeek 请求启用 `response_format=json_object`、1024 Token 输出上限和显式 strict 工具定义；调查提示包含完整 JSON 字段示例，解析失败最多自动纠正两次。
+  * 验证：`backend/.venv/bin/python -m pytest backend/tests/modules/investigation backend/tests/services/test_case_pipeline.py -q`，72 项通过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`pip --python backend/.venv/bin/python check`，无损坏依赖；`backend/.venv/bin/python -m build backend --wheel --no-isolation --outdir /tmp/siteppe-agent-json-build`，构建成功；真实 DeepSeek 合成调查完成责任人与 RAG 工具调用，并返回可解析的建议、整改责任人、期限和法规引用；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
@@ -524,6 +528,7 @@
 * 前端目录遗留的忽略文件 `vite.config.js` 被 Vite 优先加载，且其中没有 `/evidence` 代理，导致图片请求返回前端 HTML；各脚本已显式指定 TypeScript 配置并补充证据代理，真实请求验证通过。
 * 分析接口与端到端测试完成 10 个用例后未正常退出，未获得可核验的 pytest 汇总与退出码；本次以 VLM、案件流水线和视觉运行时 54 项明确通过的针对性测试作为提交门禁，不声称该组合测试通过。
 * 首次真实复跑误连到 18:10 启动且未热更新的宿主旧后端，产生 8 个旧语义案件；停止旧进程并精确清理该会话后，改为仅监听 `127.0.0.1` 的当前代码完成复验。第一层修复仍允许模型用正确前缀包装相反正文，已由第二层理由方向校验阻断。复验停止时真实调查 Agent 另有一次非 JSON 输出错误，本次未扩展到调查模块。
+* DeepSeek JSON 模式与工具调用组合时，LangChain 不会为已是 OpenAI 格式的工具字典自动补入 `strict: true`；适配器改为显式标记每个函数工具后，真实调用通过。虚拟环境缺少内置 `pip`，依赖检查改用系统 `pip --python backend/.venv/bin/python check` 完成。
 
 ### 后续计划
 

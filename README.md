@@ -121,6 +121,7 @@ VLM_MODEL=qwen3.6-35b-a3b
 ```env
 DEEPSEEK_API_KEY=<本地密钥>
 AGENT_LLM_MODEL=deepseek-v4-flash
+AGENT_LLM_MAX_OUTPUT_TOKENS=1024
 
 EMBEDDING_API_KEY=<本地密钥>
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1

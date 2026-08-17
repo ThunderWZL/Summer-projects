@@ -205,6 +205,7 @@ def test_deepseek_adapter_uses_official_non_thinking_tool_calling(
         temperature=0,
         timeout=30,
         max_retries=2,
+        max_output_tokens=1024,
     )
     schemas = [
         {
@@ -226,12 +227,14 @@ def test_deepseek_adapter_uses_official_non_thinking_tool_calling(
         "temperature": 0,
         "timeout": 30,
         "max_retries": 2,
+        "max_tokens": 1024,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
         "extra_body": {"thinking": {"type": "disabled"}},
     }
-    assert observed["schemas"] == schemas
+    assert observed["schemas"][0]["function"]["strict"] is True
     assert observed["bind_options"] == {
         "tool_choice": "auto",
-        "strict": False,
+        "strict": True,
     }
     assert response.tool_calls[0].id == "call-party-456"
 
@@ -356,7 +359,37 @@ def test_non_json_final_response_is_rejected() -> None:
     model = ScriptedFakeChatModel([{"content": "这不是 JSON"}])
 
     with pytest.raises(InvestigationAgentOutputInvalid, match="valid draft"):
-        InvestigationAgent(model, make_tools()).investigate(make_context())
+        InvestigationAgent(
+            model,
+            make_tools(),
+            max_output_retries=0,
+        ).investigate(make_context())
+
+
+def test_non_json_final_response_is_corrected_before_failing() -> None:
+    model = ScriptedFakeChatModel(
+        [
+            {
+                "tool_calls": [
+                    tool_call(
+                        "search_authoritative_requirements",
+                        {"q": "手套要求"},
+                    )
+                ]
+            },
+            {"content": "这不是 JSON"},
+            {
+                "content": json.dumps(
+                    {"recommendation": "解释", "citation_indexes": [0]}
+                )
+            },
+        ]
+    )
+
+    result = InvestigationAgent(model, make_tools()).investigate(make_context())
+
+    assert result.recommendation == "解释"
+    assert result.citations == [make_citation()]
 
 
 def test_citation_index_out_of_range_is_rejected() -> None:
