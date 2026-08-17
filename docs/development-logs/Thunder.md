@@ -458,12 +458,17 @@
   * 完成：真实模式下由一次 YOLO 与 ByteTrack 视频推理同时驱动 MJPEG 标注流、PPE 候选聚合、案件流水线和实时事件；停止会话会等待推理线程释放。
   * 实现：增加配置驱动的真实/fixture 适配器选择、会话级候选聚合器、证据 JPEG 持久化与读取接口、模型权重哈希追踪，并将视觉处理异常映射为可重试的 `SESSION_FAILED`。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/video_analysis tests/services/test_session_manager.py tests/api/test_evidence_api.py tests/modules/investigation/test_config.py -q`，63 项测试通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+* 15:19 `test(rag): 隔离Chroma可选依赖测试`
+  * 完成：消除 Chroma 懒加载测试对本机是否安装 `chromadb` 的隐式依赖，使缺失可选依赖的错误路径可稳定复现。
+  * 实现：通过测试级导入替身显式触发 `ImportError`，继续断言适配器仅在实际连接时抛出 `ChromaDependencyUnavailable`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py -q`，4 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest`，346 项通过、1 项真实 RAG 跳过；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`cd frontend && npm test`，42 项通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端与前端未配置 lint，未运行。
 
 ### 问题与处理
 
 * 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
 * 当前后端虚拟环境的 `asyncio` 默认线程池即使执行空函数也无法退出；真实视觉适配器改用会话受控线程并通过停止回归测试，避免会话和测试进程被默认线程池阻塞。
+* 当前虚拟环境自动加载第三方 pytest 插件后会使分析会话集成测试中的 AnyIO 工作线程挂起；禁用非项目所需插件后完整回归通过。原 Chroma 测试还错误假设可选依赖未安装，已改为显式模拟缺失依赖。
 
 ### 后续计划
 
-* 配置本地模型权重与演示视频后执行真实推理冒烟验证，并完成后端完整回归。
+* 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。

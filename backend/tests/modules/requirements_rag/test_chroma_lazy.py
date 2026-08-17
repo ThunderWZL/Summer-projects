@@ -10,14 +10,20 @@ from app.modules.requirements_rag.chroma import (
 )
 
 
-def test_chroma_dependency_is_not_imported_until_adapter_is_used() -> None:
+def test_chroma_dependency_is_not_imported_until_adapter_is_used(monkeypatch) -> None:
     assert "chromadb" not in sys.modules
 
     store = ChromaVectorStore("/tmp/siteppe-rag-test")
     assert store is not None
-    if "chromadb" not in sys.modules:
-        with pytest.raises(ChromaDependencyUnavailable):
-            store.connect()
+
+    def missing_chromadb(name: str):
+        assert name == "chromadb"
+        raise ImportError(name)
+
+    monkeypatch.setattr("importlib.import_module", missing_chromadb)
+
+    with pytest.raises(ChromaDependencyUnavailable):
+        store.connect()
 
 
 def test_chroma_metadata_connects_on_cold_start(monkeypatch) -> None:
