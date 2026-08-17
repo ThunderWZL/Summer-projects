@@ -9,6 +9,7 @@ from app.api.deps import (
     get_case_pipeline,
     get_case_store,
     get_clock,
+    get_evidence_store_port,
     get_investigation_port,
     get_site_context,
     get_user_directory,
@@ -17,6 +18,7 @@ from app.contracts import CaseStatus
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.main import app
+from app.modules.video_analysis.evidence_store import FileEvidenceStore
 
 
 NOW = datetime.fromisoformat("2026-08-09T10:00:00+08:00")
@@ -354,6 +356,72 @@ def test_reviewer_and_officer_complete_review_rectification_and_recheck() -> Non
     assert [item["submission_type"] for item in detail["human_submissions"]] == [
         "RECTIFICATION_EVIDENCE"
     ]
+
+
+def test_officer_uploads_a_rectification_image_that_can_be_displayed(tmp_path) -> None:
+    store = FileEvidenceStore(tmp_path)
+
+    async def override_store():
+        return store
+
+    app.dependency_overrides[get_evidence_store_port] = override_store
+
+    async def upload_and_read():
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client:
+            uploaded = await client.post(
+                "/api/v1/cases/case-overdue-01/rectification-evidence/images/manual-01",
+                params={"actor_id": "officer-01"},
+                content=b"\xff\xd8rectified\xff\xd9",
+                headers={"Content-Type": "image/jpeg"},
+            )
+            image = await client.get(uploaded.json()["image_url"])
+            return uploaded, image
+
+    try:
+        uploaded, image = asyncio.run(upload_and_read())
+    finally:
+        app.dependency_overrides.pop(get_evidence_store_port, None)
+
+    assert uploaded.status_code == 201
+    assert uploaded.json() == {
+        "evidence_id": "manual-01",
+        "image_url": "/evidence/rectification/case-overdue-01/manual-01",
+    }
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.content == b"\xff\xd8rectified\xff\xd9"
+
+
+def test_rectification_image_upload_rejects_reviewer(tmp_path) -> None:
+    store = FileEvidenceStore(tmp_path)
+
+    async def override_store():
+        return store
+
+    app.dependency_overrides[get_evidence_store_port] = override_store
+
+    async def upload():
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client:
+            return await client.post(
+                "/api/v1/cases/case-overdue-01/rectification-evidence/images/manual-01",
+                params={"actor_id": "reviewer-01"},
+                content=b"\xff\xd8rectified\xff\xd9",
+                headers={"Content-Type": "image/jpeg"},
+            )
+
+    try:
+        response = asyncio.run(upload())
+    finally:
+        app.dependency_overrides.pop(get_evidence_store_port, None)
+
+    assert response.status_code == 403
+    assert store.resolve_rectification_image("case-overdue-01", "manual-01") is None
 
 
 def test_review_rejects_ineligible_responsible_party_without_changing_case() -> None:

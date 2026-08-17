@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { ROLE_LABELS, STATUS_LABELS, TASK_OPTIONS } from "../cases/format";
+import { CaseApiError } from "../cases/api";
+import {
+  formatLongDateTime,
+  ROLE_LABELS,
+  STATUS_LABELS,
+  TASK_OPTIONS,
+} from "../cases/format";
 import type {
   CaseCommand,
   CaseDetailResponse,
@@ -8,6 +14,7 @@ import type {
   DemoUser,
   JsonValue,
 } from "../cases/types";
+import { RectificationEvidenceGallery } from "./RectificationEvidenceGallery";
 
 interface CaseActionPanelProps {
   detail: CaseDetailResponse;
@@ -15,6 +22,7 @@ interface CaseActionPanelProps {
   context: DemoContext | null;
   submitting: boolean;
   onSubmit: (command: CaseCommand) => Promise<void>;
+  onUploadEvidence: (evidenceId: string, file: File) => Promise<string>;
 }
 
 export function CaseActionPanel({
@@ -23,6 +31,7 @@ export function CaseActionPanel({
   context,
   submitting,
   onSubmit,
+  onUploadEvidence,
 }: CaseActionPanelProps) {
   const snapshot = detail.snapshot;
   const parties = useMemo(
@@ -55,6 +64,7 @@ export function CaseActionPanel({
           version={snapshot.version}
           submitting={submitting}
           onSubmit={onSubmit}
+          onUploadEvidence={onUploadEvidence}
         />
       );
     }
@@ -76,7 +86,7 @@ export function CaseActionPanel({
       return (
         <RecheckForm
           actor={actor}
-          version={snapshot.version}
+          detail={detail}
           submitting={submitting}
           onSubmit={onSubmit}
         />
@@ -144,27 +154,47 @@ function EvidenceForm({
   version,
   submitting,
   onSubmit,
-}: FormSharedProps) {
+  onUploadEvidence,
+}: FormSharedProps & {
+  onUploadEvidence: (evidenceId: string, file: File) => Promise<string>;
+}) {
   const [description, setDescription] = useState("");
   const [evidenceDrafts, setEvidenceDrafts] = useState(() => [emptyEvidenceDraft()]);
   const [reason, setReason] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (evidenceDrafts.some((draft) => !draft.imageUrl.trim() || !draft.capturedAt)) return;
-    await onSubmit({
-      command_type: "SUBMIT_RECTIFICATION_EVIDENCE",
-      actor_id: actor.actor_id,
-      expected_version: version,
-      reason: reason.trim(),
-      description: description.trim(),
-      evidence: evidenceDrafts.map((draft) => ({
-        evidence_id: createEvidenceId(),
-        image_url: draft.imageUrl.trim(),
-        captured_at: new Date(draft.capturedAt).toISOString(),
-        note: draft.note.trim() || null,
-      })),
-    });
+    if (evidenceDrafts.some((draft) => !draft.file || !draft.capturedAt)) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const uploadedEvidence = await Promise.all(
+        evidenceDrafts.map(async (draft) => ({
+          evidence_id: draft.evidenceId,
+          image_url: await onUploadEvidence(draft.evidenceId, draft.file!),
+          captured_at: new Date(draft.capturedAt).toISOString(),
+          note: draft.note.trim() || null,
+        })),
+      );
+      await onSubmit({
+        command_type: "SUBMIT_RECTIFICATION_EVIDENCE",
+        actor_id: actor.actor_id,
+        expected_version: version,
+        reason: reason.trim(),
+        description: description.trim(),
+        evidence: uploadedEvidence,
+      });
+    } catch (error) {
+      setUploadError(
+        error instanceof CaseApiError || error instanceof Error
+          ? error.message
+          : "整改图片上传失败，请重试。",
+      );
+    } finally {
+      setUploading(false);
+    }
   }
 
   function updateEvidenceDraft(index: number, patch: Partial<EvidenceDraft>) {
@@ -185,8 +215,15 @@ function EvidenceForm({
           <fieldset className="evidence-draft" key={draft.draftId}>
             <legend>整改证据 {index + 1}</legend>
             <label>
-              <span>证据图片链接</span>
-              <input required type="url" value={draft.imageUrl} onChange={(event) => updateEvidenceDraft(index, { imageUrl: event.target.value })} placeholder="https://…" />
+              <span>证据图片</span>
+              <input
+                required
+                type="file"
+                aria-label="证据图片"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => updateEvidenceDraft(index, { file: event.target.files?.[0] ?? null })}
+              />
+              <small>支持 JPEG、PNG、WebP，单张不超过 5 MB。</small>
             </label>
             <label>
               <span>拍摄时间</span>
@@ -208,8 +245,9 @@ function EvidenceForm({
         添加另一张证据
       </button>
       <ReasonField value={reason} onChange={setReason} />
-      <button className="action-primary" disabled={submitting || !description.trim() || evidenceDrafts.some((draft) => !draft.imageUrl.trim() || !draft.capturedAt) || !reason.trim()}>
-        {submitting ? "正在提交…" : "提交并进入复查"}
+      {uploadError ? <div className="action-upload-error" role="alert">{uploadError}</div> : null}
+      <button className="action-primary" disabled={submitting || uploading || !description.trim() || evidenceDrafts.some((draft) => !draft.file || !draft.capturedAt) || !reason.trim()}>
+        {uploading ? "正在上传图片…" : submitting ? "正在提交…" : "提交并进入复查"}
       </button>
     </form>
   );
@@ -217,7 +255,8 @@ function EvidenceForm({
 
 interface EvidenceDraft {
   draftId: string;
-  imageUrl: string;
+  evidenceId: string;
+  file: File | null;
   capturedAt: string;
   note: string;
 }
@@ -227,7 +266,8 @@ let nextEvidenceDraftId = 1;
 function emptyEvidenceDraft(): EvidenceDraft {
   return {
     draftId: `evidence-draft-${nextEvidenceDraftId++}`,
-    imageUrl: "",
+    evidenceId: createEvidenceId(),
+    file: null,
     capturedAt: "",
     note: "",
   };
@@ -333,17 +373,25 @@ function ReviewForm({
   );
 }
 
-function RecheckForm({ actor, version, submitting, onSubmit }: FormSharedProps) {
+function RecheckForm({
+  actor,
+  detail,
+  submitting,
+  onSubmit,
+}: Omit<FormSharedProps, "version"> & { detail: CaseDetailResponse }) {
   const [decision, setDecision] = useState<"close" | "reject">("close");
   const [conclusion, setConclusion] = useState("");
   const [reason, setReason] = useState("");
+  const latestSubmission = [...detail.human_submissions]
+    .reverse()
+    .find((submission) => submission.submission_type === "RECTIFICATION_EVIDENCE");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     await onSubmit({
       command_type: decision === "close" ? "APPROVE_CLOSURE" : "REJECT_RECHECK",
       actor_id: actor.actor_id,
-      expected_version: version,
+      expected_version: detail.snapshot.version,
       reason: reason.trim(),
       recheck_conclusion: conclusion.trim(),
     });
@@ -352,6 +400,24 @@ function RecheckForm({ actor, version, submitting, onSubmit }: FormSharedProps) 
   return (
     <form className="action-form" onSubmit={handleSubmit}>
       <ActionHeading title="复查整改" actor={actor} />
+      <section className="rectification-review" aria-labelledby="rectification-review-title">
+        <span>现场提交</span>
+        <h4 id="rectification-review-title">整改说明与证据</h4>
+        {latestSubmission ? (
+          <>
+            <p className="rectification-review__meta">
+              {latestSubmission.actor_name} · {formatLongDateTime(latestSubmission.created_at)}
+            </p>
+            <p className="rectification-review__reason">提交理由：{latestSubmission.reason}</p>
+          </>
+        ) : null}
+        <p>{detail.snapshot.rectification_description ?? "现场尚未提交整改说明。"}</p>
+        {detail.snapshot.rectification_evidence.length ? (
+          <RectificationEvidenceGallery evidence={detail.snapshot.rectification_evidence} />
+        ) : (
+          <small>现场尚未提交整改图片。</small>
+        )}
+      </section>
       <fieldset className="decision-tabs">
         <legend>复查决定</legend>
         <button type="button" aria-pressed={decision === "close"} className={decision === "close" ? "is-active" : ""} onClick={() => setDecision("close")}>通过并关闭</button>

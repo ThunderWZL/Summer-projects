@@ -52,3 +52,8 @@ class AnalysisSessionResponse(ApiModel):
     stage: AnalysisStage
     stream_url: str
     events_url: str
+
+
+class RectificationImageUploadResponse(ApiModel):
+    evidence_id: str
+    image_url: str

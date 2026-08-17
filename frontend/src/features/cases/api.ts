@@ -109,3 +109,21 @@ export async function submitCaseCommand(
   );
   return result.snapshot;
 }
+
+export async function uploadRectificationEvidenceImage(
+  caseId: string,
+  actorId: string,
+  evidenceId: string,
+  file: File,
+): Promise<string> {
+  const params = new URLSearchParams({ actor_id: actorId });
+  const result = await request<{ evidence_id: string; image_url: string }>(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/rectification-evidence/images/${encodeURIComponent(evidenceId)}?${params}`,
+    {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": file.type },
+    },
+  );
+  return result.image_url;
+}

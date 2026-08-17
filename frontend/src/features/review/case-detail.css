@@ -413,6 +413,28 @@
 .submitted-evidence p { margin: 0 0 6px; }
 .submitted-evidence a { display: block; }
 
+.rectification-review {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--case-deep);
+  border-left: 2px solid var(--case-patina);
+}
+.rectification-review > span { color: var(--case-patina); font-size: 10px; letter-spacing: 0.14em; }
+.rectification-review h4 { margin: 4px 0 8px; font-size: 15px; }
+.rectification-review > p { margin: 0 0 12px; color: var(--case-muted); white-space: pre-wrap; }
+.rectification-review > .rectification-review__meta { margin-bottom: 4px; color: var(--case-faint); font-size: 11px; }
+.rectification-review > .rectification-review__reason { margin-bottom: 10px; color: var(--case-muted); font-size: 12px; }
+.rectification-evidence-gallery { display: grid; gap: 12px; }
+.rectification-evidence-image { margin: 0; overflow: hidden; border: 1px solid var(--case-rule); background: var(--case-surface); }
+.rectification-evidence-image img { display: block; width: 100%; max-height: 280px; object-fit: contain; background: #080b0b; }
+.rectification-evidence-image figcaption { display: grid; gap: 3px; padding: 10px 12px; }
+.rectification-evidence-image figcaption strong { font-size: 12px; }
+.rectification-evidence-image figcaption time { color: var(--case-faint); font-size: 11px; }
+.rectification-evidence-image figcaption a { color: var(--case-patina); font-size: 12px; }
+.rectification-evidence-image__error { display: grid; min-height: 140px; place-content: center; gap: 10px; text-align: center; color: var(--case-muted); }
+.rectification-evidence-image__error button { color: var(--case-patina); background: transparent; border: 1px solid var(--case-rule-strong); }
+.action-upload-error { padding: 10px 12px; color: var(--case-danger); border: 1px solid var(--case-danger); font-size: 12px; }
+
 .case-timeline { margin: 0; padding: 0; list-style: none; }
 .case-timeline li { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 18px; padding-bottom: 28px; }
 .case-timeline li::before { position: absolute; top: 10px; bottom: -4px; left: 5px; width: 1px; content: ""; background: var(--case-rule); }

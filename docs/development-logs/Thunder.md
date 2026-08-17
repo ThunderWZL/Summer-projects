@@ -449,6 +449,7 @@
 * 补齐 Ultralytics 目标跟踪运行依赖，确保真实 YOLO 视频分析可以启动。
 * 修复前端关键证据帧代理，使案件详情能够显示后端生成的证据图片。
 * 将前端直接暴露的内部字段、枚举和演示素材名称转换为面向演示的中文表述。
+* 支持现场安全员直接上传整改图片，并让审核人在复查区域查看完整整改提交信息。
 
 ### 开发记录
 
@@ -517,6 +518,10 @@
   * 完成：DeepSeek 请求、输出或工具调用失败时，案件不再停留于假的“调查中”，分析会话会明确返回可重试失败。
   * 实现：首次调查改为 Agent 成功后再连续写入启动与结果迁移；DeepSeek 传输异常统一转换为调查域错误，会话管理器发布 `INVESTIGATION_PROCESSING_FAILED`。已处于旧 `INVESTIGATING` 状态的案件仍可通过原候选证据恢复调查。
   * 验证：`backend/.venv/bin/python -m pytest backend/tests/modules/investigation backend/tests/services/test_case_pipeline.py backend/tests/services/test_session_manager.py backend/tests/modules/video_analysis/test_video_analysis.py -q`，86 项通过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`pip --python backend/.venv/bin/python check`，无损坏依赖；`backend/.venv/bin/python -m build backend --wheel --no-isolation --outdir /tmp/siteppe-agent-failure-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 22:13 `feat(rectification): 支持整改图片上传与审核展示`
+  * 完成：现场安全员可选择本地 JPEG、PNG 或 WebP 图片作为整改证据；审核人在复查操作区直接查看提交人、时间、理由、整改说明和证据图片，人工提交历史同步展示图片。
+  * 实现：新增带角色、案件状态、5 MB 大小、媒体类型与文件签名校验的同源图片上传和读取接口；图片原子写入证据目录并返回稳定地址；详情页在角色切换和窗口重新聚焦时重新读取最新案件。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -q tests/modules/video_analysis/test_evidence_store.py tests/api/test_evidence_api.py tests/api/test_cases_api.py`，33 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd frontend && npm test`，12 个测试文件共 52 项通过；`cd frontend && npm run build`，构建成功；`git diff --check`，通过；后端与前端未配置独立 lint，未运行。
 
 ### 问题与处理
 
@@ -540,3 +545,4 @@
 * 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。
 * 在演示环境将六个约定视频挂载到 `/data/demo` 后，执行六路播放与案件数量冒烟验收。
 * 启动前后端，用真实 CPU YOLO、Qwen VLM、RAG 与调查 Agent 执行一次案件人工整改闭环演示。
+* 使用真实整改照片完成一次安全员上传、审核人查看并关闭案件的浏览器验收。
