@@ -103,6 +103,19 @@ VISION_IMAGE_SIZE=640
 
 若单帧推理超过 200 ms，可将 `VISION_TARGET_FPS` 调低到 `3` 或 `2`。这只降低 AI 抽帧频率，不影响源视频正常播放。
 
+### 真实 VLM 复核
+
+真实 VLM 使用 OpenAI 兼容多模态接口，将 YOLO 生成的本地证据帧编码后提交给模型：
+
+```env
+VLM_PROVIDER=openai_compat
+VLM_API_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+VLM_API_KEY=<本地密钥>
+VLM_MODEL=qwen3.6-35b-a3b
+```
+
+需要安装 `backend[ai]`。密钥仅保存在本地 `backend/.env`，不得提交。
+
 ### Agent 与 RAG
 
 ```env

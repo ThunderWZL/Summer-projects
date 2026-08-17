@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import base64
+from io import BytesIO
+import json
+from pathlib import Path, PurePosixPath
+from time import monotonic
+from typing import Any
+from urllib.parse import urlsplit
+
+from app.modules.vlm_review.errors import VlmProcessingFailed
+from app.modules.vlm_review.port import VlmRawResponse, VlmRequest
+
+
+class OpenAICompatibleVlmAdapter:
+    """Send local evidence frames to an OpenAI-compatible vision model."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+        evidence_root: Path,
+        timeout_seconds: float,
+        max_frames: int,
+        max_image_edge: int,
+        max_output_tokens: int,
+        client: Any | None = None,
+    ) -> None:
+        if not api_key:
+            raise ValueError("VLM_API_KEY is required for openai_compat")
+        if not base_url:
+            raise ValueError("VLM_API_BASE_URL is required for openai_compat")
+        if not model:
+            raise ValueError("VLM_MODEL is required for openai_compat")
+        if timeout_seconds <= 0:
+            raise ValueError("VLM_TIMEOUT_SECONDS must be positive")
+        if max_frames <= 0:
+            raise ValueError("VLM_MAX_FRAMES must be positive")
+        if max_image_edge <= 0:
+            raise ValueError("VLM_MAX_IMAGE_EDGE must be positive")
+        if max_output_tokens <= 0:
+            raise ValueError("VLM_MAX_OUTPUT_TOKENS must be positive")
+        self._api_key = api_key
+        self._base_url = base_url
+        self._model = model
+        self._evidence_root = evidence_root.resolve()
+        self._timeout_seconds = timeout_seconds
+        self._max_frames = max_frames
+        self._max_image_edge = max_image_edge
+        self._max_output_tokens = max_output_tokens
+        self._client = client
+
+    async def complete(self, request: VlmRequest) -> VlmRawResponse:
+        content = self._build_content(request)
+        started = monotonic()
+        try:
+            response = await self._get_client().chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": request.prompt},
+                    {"role": "user", "content": content},
+                ],
+                temperature=0,
+                max_tokens=self._max_output_tokens,
+                response_format={"type": "json_object"},
+                **self._provider_options(),
+            )
+        except VlmProcessingFailed:
+            raise
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", None)
+            retryable = status_code not in {400, 401, 403, 404, 422}
+            raise VlmProcessingFailed(
+                "VLM API 调用失败",
+                retryable=retryable,
+            ) from exc
+
+        raw_content = self._response_content(response)
+        return VlmRawResponse(
+            model_name=self._model,
+            content=raw_content,
+            latency_ms=max(0, round((monotonic() - started) * 1000)),
+        )
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            try:
+                from openai import AsyncOpenAI
+            except ImportError as exc:
+                raise VlmProcessingFailed(
+                    "openai 依赖未安装，无法调用真实 VLM",
+                    retryable=False,
+                ) from exc
+            self._client = AsyncOpenAI(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                timeout=self._timeout_seconds,
+                max_retries=0,
+            )
+        return self._client
+
+    def _build_content(self, request: VlmRequest) -> list[dict[str, Any]]:
+        images = request.images[: self._max_frames]
+        encoded_images = [self._encode_local_image(image) for image in images]
+        return [
+            {
+                "type": "text",
+                "text": self._review_instruction(request),
+            },
+            *[
+                {
+                    "type": "image_url",
+                    "image_url": {"url": data_url},
+                }
+                for data_url in encoded_images
+            ],
+        ]
+
+    def _encode_local_image(self, image_url: str) -> str:
+        parsed = urlsplit(image_url)
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
+            raise VlmProcessingFailed(
+                "VLM 证据图片地址无效",
+                retryable=False,
+            )
+        parts = PurePosixPath(parsed.path).parts
+        if len(parts) < 4 or parts[:2] != ("/", "evidence"):
+            raise VlmProcessingFailed(
+                "VLM 证据图片地址无效",
+                retryable=False,
+            )
+        path = (self._evidence_root / Path(*parts[2:])).resolve()
+        try:
+            path.relative_to(self._evidence_root)
+        except ValueError as exc:
+            raise VlmProcessingFailed(
+                "VLM 证据图片地址越界",
+                retryable=False,
+            ) from exc
+        if not path.is_file():
+            raise VlmProcessingFailed(
+                "VLM 证据图片不存在",
+                retryable=False,
+            )
+        image = path.read_bytes()
+        if not image.startswith(b"\xff\xd8") or not image.endswith(b"\xff\xd9"):
+            raise VlmProcessingFailed(
+                "VLM 证据图片不是有效 JPEG",
+                retryable=False,
+            )
+        encoded = base64.b64encode(self._prepare_image(image)).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+
+    def _prepare_image(self, image: bytes) -> bytes:
+        try:
+            from PIL import Image
+        except ImportError as exc:
+            raise VlmProcessingFailed(
+                "Pillow 依赖未安装，无法处理 VLM 证据图片",
+                retryable=False,
+            ) from exc
+        try:
+            with Image.open(BytesIO(image)) as source:
+                source.load()
+                if max(source.size) <= self._max_image_edge:
+                    return image
+                resized = source.convert("RGB")
+                resized.thumbnail(
+                    (self._max_image_edge, self._max_image_edge),
+                    Image.Resampling.LANCZOS,
+                )
+                output = BytesIO()
+                resized.save(output, format="JPEG", quality=85, optimize=True)
+                return output.getvalue()
+        except OSError as exc:
+            raise VlmProcessingFailed(
+                "VLM 证据图片无法解码",
+                retryable=False,
+            ) from exc
+
+    def _review_instruction(self, request: VlmRequest) -> str:
+        candidate = request.candidate
+        evidence = {
+            "candidate_id": candidate.candidate_id,
+            "person_track_id": candidate.person_track_id,
+            "ppe_type": candidate.ppe_type.value,
+            "evidence_kind": candidate.evidence_kind.value,
+            "confidence": candidate.confidence,
+            "first_seen_ms": candidate.first_seen_ms,
+            "last_seen_ms": candidate.last_seen_ms,
+            "frames": [
+                {
+                    "timestamp_ms": frame.timestamp_ms,
+                    "frame_role": frame.frame_role.value,
+                    "person_box": frame.person_box.model_dump(),
+                    "observation_box": (
+                        frame.observation_box.model_dump()
+                        if frame.observation_box is not None
+                        else None
+                    ),
+                }
+                for frame in candidate.frames[: self._max_frames]
+            ],
+        }
+        schema = {
+            "candidate_id": candidate.candidate_id,
+            "verdict": "CONFIRMED | REJECTED | UNCERTAIN",
+            "person_track_id": candidate.person_track_id,
+            "ppe_type": candidate.ppe_type.value,
+            "association": "MATCHED | AMBIGUOUS",
+            "body_part_visible": True,
+            "persistent": True,
+            "poster_or_reflection": False,
+            "evidence_sufficient": True,
+            "evidence_timestamps_ms": [
+                frame.timestamp_ms
+                for frame in candidate.frames[: self._max_frames]
+            ],
+            "reason": "简短中文理由",
+        }
+        return (
+            "候选元数据："
+            + json.dumps(evidence, ensure_ascii=False)
+            + "\n请逐帧确认同一人员与目标 PPE 的关联，排除海报、镜像和遮挡。"
+            + "只能输出一个 JSON 对象，不得添加 Markdown 或额外字段。输出结构："
+            + json.dumps(schema, ensure_ascii=False)
+        )
+
+    def _provider_options(self) -> dict[str, Any]:
+        if self._model.lower().startswith("qwen"):
+            return {"extra_body": {"enable_thinking": False}}
+        return {}
+
+    @staticmethod
+    def _response_content(response: Any) -> str:
+        try:
+            content = response.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as exc:
+            raise VlmProcessingFailed(
+                "VLM API 返回结构无效",
+                retryable=True,
+            ) from exc
+        if not isinstance(content, str) or not content.strip():
+            raise VlmProcessingFailed(
+                "VLM API 未返回有效文本",
+                retryable=True,
+            )
+        return content

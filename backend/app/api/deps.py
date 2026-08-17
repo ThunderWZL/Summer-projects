@@ -39,12 +39,16 @@ from app.modules.investigation.fake import FixedInvestigationAgent
 from app.modules.investigation.service import InvestigationService
 from app.modules.investigation.tools import InvestigationTools
 from app.modules.vlm_review.adapters.fixed import FixedVlmAdapter
+from app.modules.vlm_review.adapters.openai_compat import (
+    OpenAICompatibleVlmAdapter,
+)
+from app.modules.vlm_review.port import VlmModelPort
 from app.modules.vlm_review.service import VlmReviewService
 from app.modules.video_analysis.evidence_store import FileEvidenceStore
 from app.modules.video_analysis.runtime import build_vision_video_analysis
 from app.modules.video_analysis.video_analysis import VisionVideoAnalysis
 from app.services.case_pipeline import CasePipeline
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.services.event_hub import EventHub
 from app.services.session_manager import SessionManager
 from app.repositories import (
@@ -305,6 +309,23 @@ def get_case_pipeline() -> CasePipeline:
     )
 
 
+def build_vlm_adapter(settings: Settings) -> VlmModelPort:
+    if settings.vlm_provider == "fixed":
+        return FixedVlmAdapter()
+    if settings.vlm_provider == "openai_compat":
+        return OpenAICompatibleVlmAdapter(
+            api_key=settings.vlm_api_key or "",
+            base_url=settings.vlm_api_base_url or "",
+            model=settings.vlm_model,
+            evidence_root=Path(settings.vision_evidence_root),
+            timeout_seconds=settings.vlm_timeout_seconds,
+            max_frames=settings.vlm_max_frames,
+            max_image_edge=settings.vlm_max_image_edge,
+            max_output_tokens=settings.vlm_max_output_tokens,
+        )
+    raise ValueError(f"unsupported VLM_PROVIDER: {settings.vlm_provider}")
+
+
 def build_fixture_case_pipeline(
     store: CaseStorePort,
     users: UserDirectoryPort,
@@ -321,10 +342,14 @@ def build_fixture_case_pipeline(
     settings = get_settings()
     vlm = VlmReviewService(
         store,
-        FixedVlmAdapter(),
+        build_vlm_adapter(settings),
         workflow,
-        model_provider="fixture",
-        model_parameters={"temperature": 0},
+        model_provider=settings.vlm_provider,
+        model_parameters={
+            "temperature": 0,
+            "max_frames": settings.vlm_max_frames,
+            "max_output_tokens": settings.vlm_max_output_tokens,
+        },
         clock=clock,
         max_retries=settings.vlm_max_retries,
         retry_delay_seconds=settings.vlm_retry_delay_seconds,

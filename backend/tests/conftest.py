@@ -25,5 +25,7 @@ _OFFLINE_KEYS = (
 def _force_offline_ai_adapters() -> None:
     for key in _OFFLINE_KEYS:
         os.environ[key] = ""
+    os.environ["VLM_PROVIDER"] = "fixed"
+    os.environ["VISION_PROVIDER"] = "fixture"
     get_settings.cache_clear()
     yield
