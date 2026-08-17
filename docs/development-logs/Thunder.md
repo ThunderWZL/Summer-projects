@@ -447,6 +447,7 @@
 * 提供项目级 README，使新环境能够完成依赖安装、六路配置、服务启动和案件闭环演示。
 * 接入真实 OpenAI 兼容多模态复核，使 YOLO 证据帧能够经 Qwen 严格复核后进入案件流水线。
 * 补齐 Ultralytics 目标跟踪运行依赖，确保真实 YOLO 视频分析可以启动。
+* 修复前端关键证据帧代理，使案件详情能够显示后端生成的证据图片。
 
 ### 开发记录
 
@@ -486,6 +487,11 @@
   * 实现：为 `vision` 可选依赖显式加入 Ultralytics ByteTrack 所需的 `lap>=0.5.12,<1`，本地后端虚拟环境安装 `lap 0.5.13`。
   * 验证：`backend/.venv/bin/python -c "import lap; print(lap.__version__)"`，输出 0.5.13；真实 `YOLO.track()` 使用 `best.pt` 与演示视频单帧运行成功并识别 3 个目标；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`pip3 --python backend/.venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-lap-build`，构建成功；未运行三百余项全量后端测试，原因是本次仅补充跟踪运行依赖并已完成针对性真实推理验证；后端未配置 lint 和类型检查，未运行。
 
+* 18:16 `fix(frontend): 修复关键证据帧代理`
+  * 完成：修复案件详情中全部关键证据帧无法显示的问题，前端开发服务器现在会将 `/evidence` 图片请求转发到后端。
+  * 实现：Vite 增加 `/evidence` 代理；开发、测试和构建脚本显式指定 `vite.config.ts`，避免被本地遗留且已忽略的 `vite.config.js` 覆盖；新增代理配置回归测试。
+  * 验证：`cd frontend && npm test`，43 项通过；`cd frontend && npm run build`，构建成功；临时启动修复后的前端后请求真实证据地址，返回 `200 image/jpeg`、395167 字节；项目未配置独立 lint，未运行。
+
 ### 问题与处理
 
 * 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
@@ -497,6 +503,7 @@
 * 后端虚拟环境缺少内置 `pip` 与 `ensurepip`；改用系统 `pip3 --python .venv/bin/python` 安装声明依赖，并先从 PyTorch 官方 CPU 源安装 CPU 版本，避免下载无用的 CUDA 组件。依赖检查无损坏项。
 * Python SDK 首次受沙箱代理权限限制而超时；用户明确同意发送本地演示证据帧后，以获准网络权限完成真实调用。本地 `.env` 启用真实 YOLO 后曾使离线 MJPEG 测试误走真实推理；测试会话显式固定 `VISION_PROVIDER=fixture` 后 9 项 API 测试全部通过。
 * Ultralytics 的基础依赖不包含 ByteTrack 所需的 `lap`，真实视频分析首次调用 `model.track()` 时触发模块缺失；已安装依赖并在项目 `vision` 可选依赖中显式声明，避免新环境再次遗漏。
+* 前端目录遗留的忽略文件 `vite.config.js` 被 Vite 优先加载，且其中没有 `/evidence` 代理，导致图片请求返回前端 HTML；各脚本已显式指定 TypeScript 配置并补充证据代理，真实请求验证通过。
 
 ### 后续计划
 
