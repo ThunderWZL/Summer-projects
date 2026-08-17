@@ -444,6 +444,7 @@
 
 * 将实时视频推理接入后端分析会话，并确保停止会话能够结束正在运行的视频读取和推理。
 * 按现有视频素材重编固定六路演示场景，并保持现有前端结构、接口和单 PPE 案件模型不变。
+* 提供项目级 README，使新环境能够完成依赖安装、六路配置、服务启动和案件闭环演示。
 
 ### 开发记录
 
@@ -467,6 +468,11 @@
   * 完成：将演示固定为安全切割、无背心切割、无手套装订木板、无背心无手套攀爬、三类 PPE 均缺失的木料组装、多人混合穿戴六路；各路候选数固定为 0、1、1、2、3、7。
   * 实现：重配视频、区域、任务和 PPE 规则；夹具分析支持同一路视频生成多个工人和多项 PPE 候选，同一工人的候选共享人员轨迹，现有六路前端、API、数据库结构和单 PPE 案件模型保持不变。
   * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/adapters/database/test_seed.py tests/api/test_demo_api.py tests/api/test_analysis_sessions.py tests/api/test_cases_api.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py tests/domain/test_resolver.py tests/integration/test_end_to_end.py tests/modules/investigation/test_agent.py tests/modules/investigation/test_config.py tests/modules/investigation/test_fake.py tests/modules/investigation/test_service.py tests/modules/investigation/test_tools.py tests/services/test_session_manager_sql_persistence.py -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent' --tb=short`，138 项通过、2 项因本地环境配置排除；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent and not test_rag_configuration_is_separate_from_vlm_configuration and not test_defaults_are_used_without_vlm_env'`，342 项通过、1 项跳过、4 项因本地环境配置排除；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests/modules/investigation/test_config.py::test_agent_settings_defaults backend/tests/modules/investigation/test_config.py::test_deepseek_key_selects_real_investigation_agent backend/tests/modules/requirements_rag/test_rag_config.py::test_rag_configuration_is_separate_from_vlm_configuration backend/tests/modules/vlm_review/test_config.py::test_defaults_are_used_without_vlm_env -q`，4 项通过；合计完整后端回归 346 项通过、1 项跳过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端未配置 lint 和类型检查，未运行。
+
+* 16:29 `docs(readme): 补充项目安装与闭环演示说明`
+  * 完成：新增项目级 README，覆盖六路场景、依赖安装、视频与模型准备、稳定演示和 CPU YOLO 配置、真实 RAG、前后端启动及人工闭环步骤。
+  * 实现：以 `pyproject.toml` 的 `ai`、`vision`、`dev` 可选依赖为统一安装入口；明确真实索引查询仍需 Embedding API、媒体和权重不进入 Git，以及 fixture 与真实 YOLO 的结果边界。
+  * 验证：`git diff --check`，通过；逐项检查 README 引用的仓库文件路径，均存在。项目未配置 Markdown lint；本提交仅修改文档，未运行代码测试、静态检查和构建。
 
 ### 问题与处理
 
