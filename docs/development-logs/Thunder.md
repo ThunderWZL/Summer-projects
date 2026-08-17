@@ -497,6 +497,10 @@
   * 完成：建立面向演示的统一中文展示词汇，将作业代码、调查字段、冲突原因、工具名称、模型结论及六路素材派生名称转换为可读文案。
   * 实现：集中维护任务、机位、区域、视频场景、调查字段、规则冲突、调查工具、VLM 结论和模型来源的格式化函数；未知内部值使用保守的通用文案，不直接暴露字段名。
   * 验证：`cd frontend && npm test -- src/features/cases/format.test.ts`，4 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 19:04 `fix(frontend): 接入演示友好文案`
+  * 完成：监控台、案件中心、案件详情和人工操作区域不再直接展示后端字段、枚举、模型标识、责任主体 ID 或演示视频文件派生名称。
+  * 实现：六路机位与区域统一显示业务名称；案件状态、作业、调查事实、冲突、工具、模型结论及时间线均转换为中文表述；事实补充改为中文作业下拉框，完整案件 ID 仅保留为辅助标题信息。
+  * 验证：`cd frontend && npm test`，12 个测试文件共 49 项通过；`cd frontend && npm run build`，构建成功；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json frontend/src/features/cases/format.ts frontend/src/features/cases/CaseCenterPage.tsx frontend/src/features/cases/CasesWorkspace.tsx frontend/src/features/monitor/ChannelCard.tsx frontend/src/features/review/CaseActionPanel.tsx frontend/src/features/review/CaseDetailPage.tsx`，未发现问题；项目未配置独立 lint，未运行。
 
 ### 问题与处理
 

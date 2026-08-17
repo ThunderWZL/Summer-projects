@@ -7,10 +7,17 @@ import { demoVideos } from "../../test/fixtures";
 describe("ChannelCard", () => {
   it("labels the channel, simulated context, preview, and start action", () => {
     const onStart = vi.fn();
+    const video = {
+      ...demoVideos[0],
+      video_id: "video-safe-01",
+      camera_name: "安全1切割物料机位",
+      zone_name: "安全1切割物料区",
+      title: "安全1｜切割物料｜防护齐全",
+    };
     render(
       <ChannelCard
-        video={demoVideos[0]}
-        configuredTask="GENERAL_WORK"
+        video={video}
+        configuredTask="MATERIAL_CUTTING"
         active={false}
         candidateCount={0}
         onStart={onStart}
@@ -19,14 +26,16 @@ describe("ChannelCard", () => {
     );
 
     expect(
-      screen.getByRole("region", { name: "CAM-01 测试区 01 机位" }),
+      screen.getByRole("region", { name: "CAM-01 切割作业机位 A" }),
     ).toBeTruthy();
-    expect(screen.getByText("测试区 01")).toBeTruthy();
-    expect(screen.getByText(/当前配置作业.*GENERAL_WORK/)).toBeTruthy();
+    expect(screen.getByText("切割作业区 A")).toBeTruthy();
+    expect(screen.getByText("物料切割｜防护齐全")).toBeTruthy();
+    expect(screen.getByText(/当前作业.*物料切割/)).toBeTruthy();
+    expect(screen.queryByText(/安全1|MATERIAL_CUTTING/)).toBeNull();
     expect(screen.getByText("未开始分析")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "开始分析 CAM-01" }));
-    expect(onStart).toHaveBeenCalledWith(demoVideos[0]);
+    expect(onStart).toHaveBeenCalledWith(video);
   });
 
   it("exposes the active state through text and an accessible annotated stream", () => {

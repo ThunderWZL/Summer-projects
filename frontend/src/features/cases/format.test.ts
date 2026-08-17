@@ -7,6 +7,7 @@ import {
   formatInvestigationItem,
   formatInvestigationValue,
   formatModelLabel,
+  formatNarrative,
   formatSceneTitle,
   formatTaskLabel,
   formatToolLabel,
@@ -19,6 +20,7 @@ describe("user-facing domain labels", () => {
     expect(formatTaskLabel("MATERIAL_CUTTING")).toBe("物料切割");
     expect(formatFieldLabel("task_code")).toBe("作业类型");
     expect(formatInvestigationValue("task_source", "active_work_permit")).toBe("有效作业许可");
+    expect(formatInvestigationValue("zone_name", "无防护组装木料区")).toBe("木料组装区");
     expect(formatInvestigationItem("human_task_conflicts_with_active_permit")).toBe("现场填写的作业与有效许可不一致");
     expect(formatToolLabel("search_authoritative_requirements")).toBe("检索安全规范依据");
   });
@@ -36,5 +38,11 @@ describe("user-facing domain labels", () => {
 
   it("shortens internal case identifiers for display", () => {
     expect(formatCaseReference("case-candidate-d99c68db-8dbe-5dfd-a15e-bfeae61eae6a")).toBe("事件 D99C68DB");
+  });
+
+  it("removes internal enums from generated explanations", () => {
+    expect(formatNarrative("符合 MISSING_POSITIVE_ASSOCIATION，作业 TIMBER_ASSEMBLY")).toBe(
+      "符合未发现对应防护装备，作业木料组装",
+    );
   });
 });

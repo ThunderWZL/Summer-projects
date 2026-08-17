@@ -1,4 +1,10 @@
 import type { DemoVideo } from "../../shared/api";
+import {
+  formatCameraName,
+  formatSceneTitle,
+  formatTaskLabel,
+  formatZoneName,
+} from "../cases/format";
 
 interface ChannelCardProps {
   video: DemoVideo;
@@ -23,7 +29,11 @@ export function ChannelCard({
   onStart,
   onStreamError,
 }: ChannelCardProps) {
-  const label = `${video.camera_id} ${video.camera_name}`;
+  const cameraName = formatCameraName(video.camera_id, video.camera_name);
+  const zoneName = formatZoneName(video.zone_id, video.zone_name);
+  const sceneTitle = formatSceneTitle(video.video_id, video.title);
+  const taskLabel = formatTaskLabel(configuredTask);
+  const label = `${video.camera_id} ${cameraName}`;
   const status = starting ? "启动中" : active ? "正在分析" : "未开始分析";
 
   return (
@@ -35,8 +45,8 @@ export function ChannelCard({
       <header>
         <div>
           <strong>{video.camera_id}</strong>
-          <span>{video.camera_name}</span>
-          <span>{video.zone_name}</span>
+          <span>{cameraName}</span>
+          <span>{zoneName}</span>
         </div>
         <span className="channel-status">{status}</span>
       </header>
@@ -61,7 +71,8 @@ export function ChannelCard({
 
       <footer>
         <div className="channel-context">
-          <span title={video.title}>当前配置作业：{configuredTask}</span>
+          <span title={sceneTitle}>{sceneTitle}</span>
+          <span>当前作业：{taskLabel}</span>
           <span aria-live="polite">候选 {candidateCount}</span>
         </div>
         <button

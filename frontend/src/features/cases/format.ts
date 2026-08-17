@@ -9,13 +9,13 @@ import type {
 export const PPE_LABELS: Record<PpeType, string> = {
   helmet: "安全帽",
   gloves: "防护手套",
-  vest: "高可视背心",
+  vest: "安全背心",
   goggles: "护目镜",
   boots: "安全靴",
 };
 
 export const STATUS_LABELS: Record<CaseStatus, string> = {
-  YOLO_CANDIDATE: "待 VLM 复核",
+  YOLO_CANDIDATE: "待语义复核",
   VLM_REVIEWED: "语义复核通过",
   VLM_REJECTED: "语义复核未通过",
   INVESTIGATING: "调查中",
@@ -41,7 +41,7 @@ export const FRAME_LABELS: Record<FrameRole, string> = {
 
 export const SOURCE_LABELS: Record<TimelineSource, string> = {
   YOLO: "视觉发现",
-  VLM: "语义复核",
+  VLM: "AI 语义复核",
   AGENT: "智能调查",
   HUMAN: "人工操作",
 };
@@ -72,6 +72,15 @@ const ZONE_LABELS: Record<string, string> = {
   "zone-04": "攀爬作业区",
   "zone-05": "木料组装区",
   "zone-06": "综合作业区",
+};
+
+const SOURCE_ZONE_LABELS: Record<string, string> = {
+  "安全1切割物料区": "切割作业区 A",
+  "无背心2切割物料区": "切割作业区 B",
+  "无手套1装订木板区": "木板装订区",
+  "无背心无手套2攀爬作业区": "攀爬作业区",
+  "无防护组装木料区": "木料组装区",
+  "多人混合穿戴区": "综合作业区",
 };
 
 const SCENE_LABELS: Record<string, string> = {
@@ -175,8 +184,26 @@ export function formatCaseReference(caseId: string): string {
   return `事件 ${(uuidPrefix ?? caseId.replace(/^case-(candidate-)?/, "").slice(0, 8)).toUpperCase()}`;
 }
 
+export function formatNarrative(value: string): string {
+  const replacements: Record<string, string> = {
+    ...TASK_LABELS,
+    ...STATUS_LABELS,
+    MISSING_POSITIVE_ASSOCIATION: "未发现对应防护装备",
+    NEGATIVE_CLASS_DETECTION: "检测到未佩戴防护装备",
+  };
+  const formatted = Object.entries(replacements).reduce(
+    (text, [internalValue, label]) => text.replaceAll(internalValue, label),
+    value,
+  );
+  return formatted.replace(/\s+(?=[\u3400-\u9fff])/g, "");
+}
+
 export function formatInvestigationValue(key: string, value: unknown): string {
   if (key === "task_code" && typeof value === "string") return formatTaskLabel(value);
+  if (key === "zone_id" && typeof value === "string") return formatZoneName(value, "当前作业区域");
+  if (key === "zone_name" && typeof value === "string") {
+    return SOURCE_ZONE_LABELS[value] ?? "当前作业区域";
+  }
   if (key === "task_source" && typeof value === "string") {
     return TASK_SOURCE_LABELS[value] ?? "系统综合判断";
   }
