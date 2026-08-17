@@ -11,6 +11,7 @@ from app.domain.video_analysis import (
     AnalysisSessionNotActive,
     AnalysisSessionNotFound,
     AnalysisVideoNotFound,
+    VideoAnalysisProcessingFailed,
 )
 from app.modules.vlm_review.errors import VlmProcessingFailed
 from app.services.event_hub import EventHub
@@ -254,3 +255,38 @@ def test_vlm_processing_failure_becomes_session_failed_without_case_transition(
     assert event.payload.message == "review unavailable"
     assert event.payload.retryable is retryable
     assert after == before
+
+
+def test_video_processing_failure_becomes_retryable_session_failed() -> None:
+    async def scenario() -> AnalysisEvent:
+        release = asyncio.Event()
+
+        async def stream(_session_id: str):
+            yield b"frame"
+
+        async def fail(
+            _session: AnalysisSession, _manager: SessionManager
+        ) -> None:
+            await release.wait()
+            raise VideoAnalysisProcessingFailed("unable to read configured video")
+
+        manager = SessionManager(
+            EventHub(),
+            lambda _video_id: object(),
+            stream,
+            fail,
+        )
+        session = await manager.start_session("video-01")
+        events = manager.subscribe_events(session.session_id)
+        receive = await _start_receive(events)
+        release.set()
+        event = await receive
+        await events.aclose()
+        return event
+
+    event = asyncio.run(scenario())
+
+    assert event.event_type == "SESSION_FAILED"
+    assert event.payload.error_code == "VIDEO_ANALYSIS_PROCESSING_FAILED"
+    assert event.payload.message == "unable to read configured video"
+    assert event.payload.retryable is True

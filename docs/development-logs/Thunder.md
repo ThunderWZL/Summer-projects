@@ -437,3 +437,38 @@
 * 推送 `fix/case-store-runtime-wiring` 任务分支，交由项目负责人在 `dev` 集成验收。
 * 推送 `chore/rag-authoritative-index` 任务分支，交由项目负责人在 `dev` 集成验收。
 * 推送 `chore/site-context-config-driven` 任务分支，交由项目负责人在 `dev` 集成验收。
+
+## 2026-08-17
+
+### 当日目标
+
+* 将实时视频推理接入后端分析会话，并确保停止会话能够结束正在运行的视频读取和推理。
+
+### 开发记录
+
+* 14:23 `fix(ml): 支持视频推理协作停止`
+  * 完成：为视频推理迭代器增加外部停止信号，使停止分析会话后不再继续读取后续视频帧。
+  * 实现：在每轮读取源视频前检查调用方提供的停止回调，并继续由原有清理路径关闭后台推理线程和视频捕获句柄。
+  * 验证：`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项测试通过；ML 全局 lint 和构建命令未配置，未运行。本切片未修改后端和前端，未运行后端完整测试和前端构建。
+* 14:24 `docs(log): 更正视觉接线任务负责人`
+  * 完成：将本任务开发记录从误写的成员日志移至任务负责人 Thunder 的日志。
+  * 实现：删除 Wuweizhe 日志中本任务新增区块，并在 Thunder 日志保留真实提交与验证记录。
+  * 验证：`git diff --check`，通过；本提交仅更正日志归属，未运行代码测试。
+* 14:48 `feat(video-analysis): 接入真实视觉分析会话`
+  * 完成：真实模式下由一次 YOLO 与 ByteTrack 视频推理同时驱动 MJPEG 标注流、PPE 候选聚合、案件流水线和实时事件；停止会话会等待推理线程释放。
+  * 实现：增加配置驱动的真实/fixture 适配器选择、会话级候选聚合器、证据 JPEG 持久化与读取接口、模型权重哈希追踪，并将视觉处理异常映射为可重试的 `SESSION_FAILED`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/video_analysis tests/services/test_session_manager.py tests/api/test_evidence_api.py tests/modules/investigation/test_config.py -q`，63 项测试通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+* 15:19 `test(rag): 隔离Chroma可选依赖测试`
+  * 完成：消除 Chroma 懒加载测试对本机是否安装 `chromadb` 的隐式依赖，使缺失可选依赖的错误路径可稳定复现。
+  * 实现：通过测试级导入替身显式触发 `ImportError`，继续断言适配器仅在实际连接时抛出 `ChromaDependencyUnavailable`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py -q`，4 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest`，346 项通过、1 项真实 RAG 跳过；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`cd frontend && npm test`，42 项通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端与前端未配置 lint，未运行。
+
+### 问题与处理
+
+* 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
+* 当前后端虚拟环境的 `asyncio` 默认线程池即使执行空函数也无法退出；真实视觉适配器改用会话受控线程并通过停止回归测试，避免会话和测试进程被默认线程池阻塞。
+* 当前虚拟环境自动加载第三方 pytest 插件后会使分析会话集成测试中的 AnyIO 工作线程挂起；禁用非项目所需插件后完整回归通过。原 Chroma 测试还错误假设可选依赖未安装，已改为显式模拟缺失依赖。
+
+### 后续计划
+
+* 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。

@@ -157,6 +157,13 @@ AGENT_ENV_KEYS = (
     "AGENT_LLM_TEMPERATURE",
 )
 DATABASE_ENV_KEYS = ("DATABASE_URL", "DATABASE_ECHO")
+VISION_ENV_KEYS = (
+    "VISION_PROVIDER",
+    "YOLO_WEIGHTS_PATH",
+    "VISION_DEVICE",
+    "VISION_TARGET_FPS",
+    "VISION_EVIDENCE_ROOT",
+)
 
 
 def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,9 +219,25 @@ def test_env_example_lists_agent_configuration_without_secret_values() -> None:
 
     assert set(AGENT_ENV_KEYS) <= values.keys()
     assert set(DATABASE_ENV_KEYS) <= values.keys()
+    assert set(VISION_ENV_KEYS) <= values.keys()
     assert values["DEEPSEEK_API_KEY"] == ""
     assert values["VLM_API_KEY"] == ""
     assert values["EMBEDDING_API_KEY"] == ""
+    assert values["YOLO_WEIGHTS_PATH"] == ""
+
+
+def test_vision_settings_select_real_provider_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VISION_PROVIDER", "yolo")
+    monkeypatch.setenv("YOLO_WEIGHTS_PATH", "/models/best.pt")
+    monkeypatch.setenv("VISION_TARGET_FPS", "6")
+
+    settings = Settings()
+
+    assert settings.vision_provider == "yolo"
+    assert settings.yolo_weights_path == "/models/best.pt"
+    assert settings.vision_target_fps == 6
 
 
 def test_vlm_and_embedding_keys_are_never_reused_for_deepseek(

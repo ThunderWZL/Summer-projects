@@ -32,6 +32,14 @@ class AnalysisSessionNotActive(VideoAnalysisError):
         super().__init__(f"analysis session {session_id} is not active")
 
 
+class VideoAnalysisProcessingFailed(VideoAnalysisError):
+    code = "VIDEO_ANALYSIS_PROCESSING_FAILED"
+    retryable = True
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisSession:
     session_id: str

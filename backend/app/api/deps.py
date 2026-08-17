@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import Depends
 from sqlalchemy import Engine
@@ -39,6 +40,9 @@ from app.modules.investigation.service import InvestigationService
 from app.modules.investigation.tools import InvestigationTools
 from app.modules.vlm_review.adapters.fixed import FixedVlmAdapter
 from app.modules.vlm_review.service import VlmReviewService
+from app.modules.video_analysis.evidence_store import FileEvidenceStore
+from app.modules.video_analysis.runtime import build_vision_video_analysis
+from app.modules.video_analysis.video_analysis import VisionVideoAnalysis
 from app.services.case_pipeline import CasePipeline
 from app.config import get_settings
 from app.services.event_hub import EventHub
@@ -87,6 +91,8 @@ def shutdown_database_runtime() -> None:
     for dependency in (
         get_session_manager,
         get_inmemory_video_analysis,
+        get_vision_video_analysis,
+        get_evidence_store,
         get_case_pipeline,
         get_investigation_port,
         get_analysis_session_store,
@@ -138,13 +144,36 @@ def get_inmemory_video_analysis() -> InMemoryVideoAnalysis:
 
 
 @lru_cache
+def get_evidence_store() -> FileEvidenceStore:
+    return FileEvidenceStore(Path(get_settings().vision_evidence_root))
+
+
+async def get_evidence_store_port() -> FileEvidenceStore:
+    return get_evidence_store()
+
+
+@lru_cache
+def get_vision_video_analysis() -> VisionVideoAnalysis:
+    return build_vision_video_analysis(
+        get_settings(),
+        get_site_context(),
+        get_case_pipeline(),
+    )
+
+
+@lru_cache
 def get_session_manager() -> SessionManager:
-    fake = get_inmemory_video_analysis()
+    settings = get_settings()
+    analysis = (
+        get_vision_video_analysis()
+        if settings.vision_provider == "yolo"
+        else get_inmemory_video_analysis()
+    )
     return SessionManager(
         get_event_hub(),
         get_site_context().get_video,
-        fake.get_stream,
-        fake.run_session,
+        analysis.get_stream,
+        analysis.run_session,
         save_session=get_analysis_session_store().save,
     )
 

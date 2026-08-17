@@ -27,6 +27,10 @@ def test_store_writes_evidence_and_returns_a_stable_url(tmp_path) -> None:
 
     assert first_url == second_url == "/evidence/session-01/400.jpg"
     assert (tmp_path / "session-01" / "400.jpg").read_bytes() == JPEG
+    assert store.resolve_jpeg("session-01", 400) == (
+        tmp_path / "session-01" / "400.jpg"
+    )
+    assert store.resolve_jpeg("../outside", 400) is None
 
 
 def test_store_rejects_different_bytes_for_the_same_evidence_key(tmp_path) -> None:
