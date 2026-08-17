@@ -446,6 +446,7 @@
 * 按现有视频素材重编固定六路演示场景，并保持现有前端结构、接口和单 PPE 案件模型不变。
 * 提供项目级 README，使新环境能够完成依赖安装、六路配置、服务启动和案件闭环演示。
 * 接入真实 OpenAI 兼容多模态复核，使 YOLO 证据帧能够经 Qwen 严格复核后进入案件流水线。
+* 补齐 Ultralytics 目标跟踪运行依赖，确保真实 YOLO 视频分析可以启动。
 
 ### 开发记录
 
@@ -480,6 +481,11 @@
   * 实现：仅允许读取证据根目录内的 JPEG，将证据帧按最大边限制缩放压缩后编码为 Base64；请求关闭 Qwen 思考模式并要求 JSON 对象，响应继续由现有严格解析器校验；密钥只从环境变量读取，错误按是否可重试分类。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/modules/video_analysis/test_runtime.py tests/services/test_case_pipeline.py -q`，48 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/api/test_analysis_sessions.py -q`，9 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-build`，构建成功；真实 Qwen3.6 图片调用返回并通过严格解析，CPU YOLO 使用 `best.pt` 单帧推理成功；`git diff --check`，通过。后端未配置 lint 和类型检查，未运行前端构建。
 
+* 18:08 `fix(vision): 补充目标跟踪依赖`
+  * 完成：修复真实 YOLO 视频分析启动时报 `No module named 'lap'`，并将缺失依赖纳入视觉环境安装清单。
+  * 实现：为 `vision` 可选依赖显式加入 Ultralytics ByteTrack 所需的 `lap>=0.5.12,<1`，本地后端虚拟环境安装 `lap 0.5.13`。
+  * 验证：`backend/.venv/bin/python -c "import lap; print(lap.__version__)"`，输出 0.5.13；真实 `YOLO.track()` 使用 `best.pt` 与演示视频单帧运行成功并识别 3 个目标；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`pip3 --python backend/.venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-lap-build`，构建成功；未运行三百余项全量后端测试，原因是本次仅补充跟踪运行依赖并已完成针对性真实推理验证；后端未配置 lint 和类型检查，未运行。
+
 ### 问题与处理
 
 * 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
@@ -487,9 +493,10 @@
 * 当前虚拟环境自动加载第三方 pytest 插件后会使分析会话集成测试中的 AnyIO 工作线程挂起；禁用非项目所需插件后完整回归通过。原 Chroma 测试还错误假设可选依赖未安装，已改为显式模拟缺失依赖。
 * 本地 `backend/.env` 会覆盖默认配置并干扰 4 项配置测试；在仓库根目录隔离该环境后补跑，4 项均通过，未修改或提交本地环境文件。
 * 前端首次构建因本地缺少已声明的开发依赖失败；执行 `cd frontend && npm ci --include=dev` 后构建通过。安装过程报告 3 个 high 级依赖审计问题，本切片未执行可能改变依赖版本的自动修复。
-* 当前机器没有 `/data/demo` 目录且仓库内不包含演示视频，因此仅验证了六路编排逻辑，未执行真实视频播放和时长核对。
+* 此前当前机器没有 `/data/demo`；用户完成演示视频放置与目录链接后，已使用其中视频执行真实 YOLO 单帧推理和跟踪验证。
 * 后端虚拟环境缺少内置 `pip` 与 `ensurepip`；改用系统 `pip3 --python .venv/bin/python` 安装声明依赖，并先从 PyTorch 官方 CPU 源安装 CPU 版本，避免下载无用的 CUDA 组件。依赖检查无损坏项。
 * Python SDK 首次受沙箱代理权限限制而超时；用户明确同意发送本地演示证据帧后，以获准网络权限完成真实调用。本地 `.env` 启用真实 YOLO 后曾使离线 MJPEG 测试误走真实推理；测试会话显式固定 `VISION_PROVIDER=fixture` 后 9 项 API 测试全部通过。
+* Ultralytics 的基础依赖不包含 ByteTrack 所需的 `lap`，真实视频分析首次调用 `model.track()` 时触发模块缺失；已安装依赖并在项目 `vision` 可选依赖中显式声明，避免新环境再次遗漏。
 
 ### 后续计划
 
