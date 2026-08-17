@@ -87,15 +87,15 @@ def make_citation() -> Citation:
         document_title="个体防护装备配备规范",
         section="手部防护",
         source_url="https://example.test/standard",
-        excerpt="钢筋搬运应根据风险配备手部防护。",
+        excerpt="木板装订应根据风险配备手部防护。",
     )
 
 
 def make_agent_result(*, citations: list[Citation] | None = None) -> AgentRunResult:
     return AgentRunResult(
-        recommendation="钢筋搬运存在手部伤害风险，应佩戴手套。",
+        recommendation="木板装订存在手部伤害风险，应佩戴手套。",
         rectification_recommendation=RectificationRecommendation(
-            responsible_party_id="team-structure-01",
+            responsible_party_id="team-carpentry-01",
             due_at=datetime.fromisoformat("2026-08-07T10:30:00+08:00"),
             reason="在规则时限内完成手部防护整改",
         ),
@@ -132,12 +132,25 @@ class CountingAgent:
         return self.result
 
 
-def make_service(store: SpyStore, agent: CountingAgent) -> InvestigationService:
+def make_service(
+    store: SpyStore,
+    agent: CountingAgent,
+    context: MemorySiteContext | None = None,
+) -> InvestigationService:
     return InvestigationService(
         store=store,
-        resolver=DeterministicInvestigationResolver(MemorySiteContext()),
+        resolver=DeterministicInvestigationResolver(
+            context or MemorySiteContext()
+        ),
         agent=agent,
     )
+
+
+class NoPermitContext(MemorySiteContext):
+    def find_active_work_permits(self, zone_id: str, occurred_at: datetime):
+        if zone_id == "zone-01":
+            return []
+        return super().find_active_work_permits(zone_id, occurred_at)
 
 
 def test_missing_case_raises_typed_investigation_error() -> None:
@@ -152,7 +165,9 @@ def test_incomplete_resolver_result_does_not_invoke_agent() -> None:
     store = SpyStore(make_case("CAM-01"))
     agent = CountingAgent(make_agent_result())
 
-    result = make_service(store, agent).investigate("case-investigation")
+    result = make_service(store, agent, NoPermitContext()).investigate(
+        "case-investigation"
+    )
 
     assert agent.calls == []
     assert result.missing_fields == ["active_work_permit", "task_code"]
@@ -168,7 +183,7 @@ def test_complete_resolver_result_invokes_agent_exactly_once_without_committing(
 
     assert len(agent.calls) == 1
     assert store.commit_calls == 0
-    assert result.applicable_task == "HANDLING_REBAR"
+    assert result.applicable_task == "BOARD_FASTENING"
 
 
 def test_final_applicability_fields_only_come_from_resolver() -> None:
@@ -177,7 +192,7 @@ def test_final_applicability_fields_only_come_from_resolver() -> None:
         rectification_recommendation=None,
         citations=[make_citation()],
         tool_trace=["search_authoritative_requirements"],
-        applicable_task="ROTATING_EQUIPMENT_OPERATION",
+        applicable_task="CLIMBING_WORK",
         hazards=["伪造危害"],
         required_ppe=[PpeType.HELMET],
     )
@@ -187,9 +202,13 @@ def test_final_applicability_fields_only_come_from_resolver() -> None:
         "case-investigation"
     )
 
-    assert result.applicable_task == "HANDLING_REBAR"
-    assert result.hazards == ["手部伤害风险"]
-    assert result.required_ppe == [PpeType.GLOVES]
+    assert result.applicable_task == "BOARD_FASTENING"
+    assert result.hazards == ["木刺", "钉装伤害"]
+    assert result.required_ppe == [
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    ]
 
 
 def test_valid_agent_responsibility_is_mapped_to_rectification_recommendation() -> None:

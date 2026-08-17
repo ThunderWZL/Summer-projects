@@ -52,13 +52,13 @@ async def _let_subscription_start(task: asyncio.Task[AnalysisEvent]) -> None:
 def test_analysis_session_and_port_expose_the_frozen_contract() -> None:
     session = AnalysisSession(
         session_id="session-01",
-        video_id="video-02",
+        video_id="video-no-vest-02",
         stage=AnalysisStage.INFERENCING,
     )
 
     assert session == AnalysisSession(
         session_id="session-01",
-        video_id="video-02",
+        video_id="video-no-vest-02",
         stage=AnalysisStage.INFERENCING,
     )
     assert {
@@ -111,39 +111,68 @@ async def _run_demo(video_id: str) -> tuple[list[AnalysisEvent], object]:
     return received, get_case_store()
 
 
-def test_cam01_to_cam05_publish_candidates_with_nonempty_case_ids_and_cam06_is_zero() -> None:
+def test_six_recomposed_channels_publish_the_expected_candidates() -> None:
     async def scenario():
         _reset_composition()
-        results = []
-        for number in range(1, 7):
-            results.append(await _run_demo(f"video-{number:02d}"))
-        return results
+        video_ids = (
+            "video-safe-01",
+            "video-no-vest-02",
+            "video-no-gloves-01",
+            "video-no-vest-gloves-02",
+            "video-no-ppe",
+            "video-mixed-wearing",
+        )
+        return [await _run_demo(video_id) for video_id in video_ids]
 
     results = asyncio.run(scenario())
 
-    for events, store in results[:5]:
-        created = next(event for event in events if event.event_type.value == "CANDIDATE_CREATED")
+    expected_counts = (0, 1, 1, 2, 3, 7)
+    for (events, store), expected_count in zip(
+        results, expected_counts, strict=True
+    ):
+        created = [
+            event
+            for event in events
+            if event.event_type.value == "CANDIDATE_CREATED"
+        ]
         finished = events[-1]
-        assert created.case_id
-        assert store.get(created.case_id) is not None
-        assert (finished.payload.candidate_count, finished.payload.case_count) == (1, 1)
+        assert len(created) == expected_count
+        assert all(event.case_id and store.get(event.case_id) for event in created)
+        assert (
+            finished.payload.candidate_count,
+            finished.payload.case_count,
+        ) == (expected_count, expected_count)
         assert all(
             event.payload.candidate_count == 0 and event.payload.case_count == 0
             for event in events
             if event.event_type.value == "SESSION_PROGRESS"
         )
-    cam06_events, _ = results[5]
-    assert all(event.event_type.value != "CANDIDATE_CREATED" for event in cam06_events)
-    assert (cam06_events[-1].payload.candidate_count, cam06_events[-1].payload.case_count) == (0, 0)
+
+    mixed_events, _ = results[5]
+    mixed_candidates = [
+        event.payload
+        for event in mixed_events
+        if event.event_type.value == "CANDIDATE_CREATED"
+    ]
+    missing_by_person: dict[str, set[str]] = {}
+    for candidate in mixed_candidates:
+        missing_by_person.setdefault(candidate.person_track_id, set()).add(
+            candidate.ppe_type.value
+        )
+    assert sorted(missing_by_person.values(), key=len) == [
+        {"gloves", "helmet"},
+        {"gloves", "helmet"},
+        {"gloves", "helmet", "vest"},
+    ]
 
 
 def test_replaying_a_demo_video_reuses_the_case_without_duplicate_transitions() -> None:
     async def scenario():
         _reset_composition()
-        first_events, store = await _run_demo("video-03")
+        first_events, store = await _run_demo("video-no-gloves-01")
         first_id = next(event.case_id for event in first_events if event.event_type.value == "CANDIDATE_CREATED")
         first = store.get(first_id)
-        second_events, _ = await _run_demo("video-03")
+        second_events, _ = await _run_demo("video-no-gloves-01")
         second_id = next(event.case_id for event in second_events if event.event_type.value == "CANDIDATE_CREATED")
         return first_id, second_id, first, store.get(second_id)
 

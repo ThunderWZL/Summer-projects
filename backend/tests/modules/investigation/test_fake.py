@@ -33,15 +33,15 @@ def make_citation() -> Citation:
         document_title="个体防护装备配备规范",
         section="手部防护",
         source_url="https://example.test/standard",
-        excerpt="钢筋搬运应根据风险配备手部防护。",
+        excerpt="木板装订应根据风险配备手部防护。",
     )
 
 
 def make_context(
     *,
     zone_id: str = "zone-03",
-    zone_name: str = "钢筋区",
-    task: str = "HANDLING_REBAR",
+    zone_name: str = "无手套1装订木板区",
+    task: str = "BOARD_FASTENING",
     hazards: list[str] | None = None,
     required_ppe: list[PpeType] | None = None,
     exception_note: str | None = None,
@@ -54,9 +54,11 @@ def make_context(
         occurred_at=OCCURRED_AT,
         ppe_type=PpeType.GLOVES,
         applicable_task=task,
-        hazards=hazards if hazards is not None else ["手部伤害风险"],
+        hazards=hazards if hazards is not None else ["木刺", "钉装伤害"],
         required_ppe=(
-            required_ppe if required_ppe is not None else [PpeType.GLOVES]
+            required_ppe
+            if required_ppe is not None
+            else [PpeType.HELMET, PpeType.GLOVES, PpeType.VEST]
         ),
         exception_note=exception_note,
         rectification_window_minutes=window,
@@ -88,7 +90,7 @@ def test_fixed_agent_query_is_derived_from_task_and_ppe_not_camera_id() -> None:
     agent.investigate(make_context())
 
     assert len(retriever.queries) == 1
-    assert "HANDLING_REBAR" in retriever.queries[0].q
+    assert "BOARD_FASTENING" in retriever.queries[0].q
     assert "gloves" in retriever.queries[0].q
     assert "CAM-" not in retriever.queries[0].q
 
@@ -107,7 +109,7 @@ def test_fixed_agent_responsibility_selection_is_stable() -> None:
         second.rectification_recommendation.responsible_party_id
     )
     assert first.rectification_recommendation.responsible_party_id == (
-        "team-structure-01"
+        "team-carpentry-01"
     )
 
 
@@ -143,23 +145,28 @@ def test_fixed_agent_distinguishes_default_cam_03_and_cam_04_business_contexts()
     cam04 = agent.investigate(
         make_context(
             zone_id="zone-04",
-            zone_name="旋转设备区",
-            task="ROTATING_EQUIPMENT_OPERATION",
-            hazards=["卷入风险"],
-            required_ppe=[PpeType.HELMET],
-            exception_note="旋转设备旁不宜简单要求佩戴手套",
-            window=60,
+            zone_name="无背心无手套2攀爬作业区",
+            task="CLIMBING_WORK",
+            hazards=["高处坠落", "物体打击"],
+            required_ppe=[PpeType.HELMET, PpeType.GLOVES, PpeType.VEST],
+            exception_note="视频中的其他穿戴不计作高可视安全背心",
         )
     )
 
     assert "应落实 gloves" in (cam03.recommendation or "")
-    assert "gloves 不属于适用" in (cam04.recommendation or "")
+    assert "应落实 gloves" in (cam04.recommendation or "")
     assert cam03.recommendation != cam04.recommendation
 
 
 def fixture_investigation(camera_id: str, *, human_facts: dict | None = None):
     context = MemorySiteContext()
     candidate = build_fixture_candidate(camera_id, f"session-{camera_id.lower()}")
+    if candidate is None and camera_id == "CAM-01":
+        candidate = build_fixture_candidate(
+            camera_id,
+            f"session-{camera_id.lower()}",
+            ppe_type=PpeType.HELMET,
+        )
     assert candidate is not None
     snapshot = CaseSnapshot(
         case_id=f"case-{camera_id.lower()}",
@@ -192,8 +199,8 @@ def test_cam02_is_complete_from_its_frozen_permit_context() -> None:
 
     result = port.investigate(case_id)
 
-    assert result.facts["task_code"] == "HOT_WORK_CUTTING"
-    assert result.applicable_task == "HOT_WORK_CUTTING"
+    assert result.facts["task_code"] == "MATERIAL_CUTTING"
+    assert result.applicable_task == "MATERIAL_CUTTING"
     assert PpeType.HELMET in result.required_ppe
     assert result.missing_fields == []
     assert result.conflicts == []
@@ -216,7 +223,7 @@ def test_non_whitelisted_site_note_does_not_change_cam02_resolution() -> None:
     assert result.citations == [make_citation()]
 
 
-def test_cam03_and_cam04_keep_the_resolver_ppe_applicability_distinct() -> None:
+def test_cam03_and_cam04_keep_their_distinct_tasks() -> None:
     cam03, case03 = fixture_investigation("CAM-03")
     cam04, case04 = fixture_investigation("CAM-04")
 
@@ -224,19 +231,20 @@ def test_cam03_and_cam04_keep_the_resolver_ppe_applicability_distinct() -> None:
     result04 = cam04.investigate(case04)
 
     assert PpeType.GLOVES in result03.required_ppe
-    assert PpeType.GLOVES not in result04.required_ppe
-    assert result03.applicable_task == "HANDLING_REBAR"
-    assert result04.applicable_task == "ROTATING_EQUIPMENT_OPERATION"
+    assert PpeType.GLOVES in result04.required_ppe
+    assert result03.applicable_task == "BOARD_FASTENING"
+    assert result04.applicable_task == "CLIMBING_WORK"
 
 
-def test_cam01_missing_permit_cannot_be_fabricated_as_complete_by_the_fake() -> None:
+def test_cam01_safe_cutting_context_remains_complete_if_a_candidate_is_supplied() -> None:
     port, case_id = fixture_investigation("CAM-01")
 
     result = port.investigate(case_id)
 
-    assert result.missing_fields
-    assert result.applicable_task is None
-    assert result.required_ppe == []
-    assert result.recommendation is None
-    assert result.rectification_recommendation is None
-    assert result.citations == []
+    assert result.missing_fields == []
+    assert result.applicable_task == "MATERIAL_CUTTING"
+    assert set(result.required_ppe) == {
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    }

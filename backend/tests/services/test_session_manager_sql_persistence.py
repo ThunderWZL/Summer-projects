@@ -58,12 +58,12 @@ def test_start_persists_session_before_runner_creates_case() -> None:
         created_case = asyncio.get_running_loop().create_future()
         manager = SessionManager(
             EventHub(),
-            lambda video_id: object() if video_id == "video-02" else None,
+            lambda video_id: object() if video_id == "video-no-vest-02" else None,
             stream,
             run,
             save_session=session_store.save,
         )
-        await manager.start_session("video-02")
+        await manager.start_session("video-no-vest-02")
         return await asyncio.wait_for(created_case, timeout=1)
 
     try:

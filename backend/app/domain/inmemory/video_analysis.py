@@ -10,7 +10,7 @@ from app.contracts import (
     CaseUpdatedPayload,
     VlmReviewedPayload,
 )
-from app.domain.inmemory.fixture_candidates import candidate_for_video
+from app.domain.inmemory.fixture_candidates import candidates_for_video
 from app.domain.site_context import SiteContextPort
 from app.domain.video_analysis import AnalysisSession
 from app.services.session_manager import SessionManager
@@ -79,9 +79,11 @@ class InMemoryVideoAnalysis:
             inference_fps=12.0,
         )
         await asyncio.sleep(1.0)
-        candidate = candidate_for_video(video, session.session_id)
-        if candidate is not None:
+        candidates = candidates_for_video(video, session.session_id)
+        case_ids: set[str] = set()
+        for candidate in candidates:
             case = self._pipeline.ensure_case(candidate)
+            case_ids.add(case.case_id)
             is_new_candidate = (
                 case.status is CaseStatus.YOLO_CANDIDATE and not case.transitions
             )
@@ -123,9 +125,8 @@ class InMemoryVideoAnalysis:
                         ),
                         playback_ms=candidate.last_seen_ms,
                     )
-        case_count = 1 if candidate is not None else 0
         await manager.finish_session(
             session.session_id,
-            candidate_count=case_count,
-            case_count=case_count,
+            candidate_count=len(candidates),
+            case_count=len(case_ids),
         )

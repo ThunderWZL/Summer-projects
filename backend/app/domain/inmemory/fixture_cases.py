@@ -6,6 +6,7 @@ from app.contracts import (
     CaseStatus,
     CaseTransition,
     InvestigationResult,
+    PpeType,
     RectificationEvidence,
     RectificationEvidenceSubmissionRecord,
     VlmReviewResult,
@@ -29,6 +30,7 @@ def _candidate(
         "session-demo-01",
         namespace="seed",
         candidate_suffix=case_id,
+        ppe_type=PpeType(ppe_type),
     )
     if candidate is None or candidate.ppe_type.value != ppe_type:
         raise ValueError(f"unsupported seed candidate for {camera_id} {ppe_type}")
@@ -103,13 +105,13 @@ def _resolved_investigation(
     )
 
 
-def _cutting_helmet_investigation(
+def _cutting_vest_investigation(
     candidate: CandidateEvidence,
 ) -> InvestigationResult:
     return _resolved_investigation(
         candidate,
-        recommendation="切割作业要求佩戴安全帽，确认责任主体与期限后进入整改",
-        responsible_party_id="team-electric-01",
+        recommendation="切割作业要求穿戴安全背心，确认责任主体与期限后进入整改",
+        responsible_party_id="team-cutting-02",
         due_at="2026-08-10T18:00:00+08:00",
         citation={
             "document_title": "个体防护装备配备规范 第12部分：建筑",
@@ -124,23 +126,23 @@ def _cutting_helmet_investigation(
     )
 
 
-def _vehicle_vest_investigation(
+def _timber_vest_investigation(
     candidate: CandidateEvidence,
 ) -> InvestigationResult:
     return _resolved_investigation(
         candidate,
-        recommendation="车辆作业区人员应佩戴高可视背心",
-        responsible_party_id="team-logistics-01",
+        recommendation="木料组装作业人员应穿戴安全背心",
+        responsible_party_id="team-carpentry-02",
         due_at="2026-08-08T10:00:00+08:00",
         citation={
             "document_title": "建筑工人施工现场劳动保护基本配置指南",
             "standard_no": None,
-            "section": "高可视警示服",
+            "section": "建筑作业个体防护装备配备",
             "source_url": (
                 "https://www.gov.cn/zhengce/zhengceku/2021-01/19/"
                 "5580999/files/10d98ecac8cd4c68a887b0519b56768b.pdf"
             ),
-            "excerpt": "车辆作业区域应按风险配备高可视警示服。",
+            "excerpt": "应依据建筑作业危害配备适用的个体防护装备。",
         },
     )
 
@@ -148,19 +150,20 @@ def _vehicle_vest_investigation(
 def _missing_facts_investigation(
     candidate: CandidateEvidence,
 ) -> InvestigationResult:
-    return _resolved_investigation(
-        candidate,
-        recommendation=None,
+    resolved = _resolved_investigation(candidate, recommendation=None)
+    return resolved.model_copy(
+        update={"missing_fields": ["现场作业状态"]},
+        deep=True,
     )
 
 
-def _rebar_gloves_investigation(
+def _board_gloves_investigation(
     candidate: CandidateEvidence,
 ) -> InvestigationResult:
     return _resolved_investigation(
         candidate,
-        recommendation="钢筋搬运作业应按任务要求佩戴防护手套",
-        responsible_party_id="team-structure-01",
+        recommendation="木板装订作业应按任务要求佩戴防护手套",
+        responsible_party_id="team-carpentry-01",
         due_at="2026-08-08T18:00:00+08:00",
         citation={
             "document_title": "个体防护装备配备规范 第12部分：建筑",
@@ -175,23 +178,23 @@ def _rebar_gloves_investigation(
     )
 
 
-def _rotating_equipment_investigation(
+def _climbing_gloves_investigation(
     candidate: CandidateEvidence,
 ) -> InvestigationResult:
     return _resolved_investigation(
         candidate,
-        recommendation="不应简单要求佩戴手套，应优先落实防卷入措施",
-        responsible_party_id="team-mechanical-01",
+        recommendation="攀爬作业应按任务要求佩戴防护手套和安全背心",
+        responsible_party_id="team-climbing-01",
         due_at="2026-08-10T18:00:00+08:00",
         citation={
             "document_title": "建筑与市政施工现场安全卫生与职业健康通用规范",
             "standard_no": "GB 55034-2022",
-            "section": "机械设备作业",
+            "section": "高处作业",
             "source_url": (
                 "https://www.mohurd.gov.cn/gongkai/fdzdgknr/"
                 "zfhcxjsbwj/202211/20221117_768953.html"
             ),
-            "excerpt": "机械设备作业应采取防止人员卷入的安全措施。",
+            "excerpt": "高处作业应根据风险采取人员防护措施。",
         },
     )
 
@@ -201,7 +204,7 @@ def _closed_evidence() -> RectificationEvidence:
         evidence_id="evidence-case-closed-01",
         image_url="/evidence/case-closed-01/after.jpg",
         captured_at="2026-08-07T12:00:00+08:00",
-        note="整改后的车辆作业区人员高可视背心",
+        note="整改后的木料组装作业人员安全背心",
     )
 
 
@@ -288,8 +291,8 @@ def demo_cases() -> list[CaseSnapshot]:
     data = [
         {
             "case_id": "case-facts-01",
-            "camera_id": "CAM-01",
-            "ppe_type": "helmet",
+            "camera_id": "CAM-02",
+            "ppe_type": "vest",
             "status": CaseStatus.NEEDS_HUMAN_FACTS,
             "occurred_at": "2026-08-07T09:30:00+08:00",
             "investigation_factory": _missing_facts_investigation,
@@ -297,10 +300,10 @@ def demo_cases() -> list[CaseSnapshot]:
         {
             "case_id": "case-01",
             "camera_id": "CAM-02",
-            "ppe_type": "helmet",
+            "ppe_type": "vest",
             "status": CaseStatus.PENDING_REVIEW,
             "occurred_at": "2026-08-07T10:00:00+08:00",
-            "investigation_factory": _cutting_helmet_investigation,
+            "investigation_factory": _cutting_vest_investigation,
         },
         {
             "case_id": "case-overdue-01",
@@ -308,9 +311,9 @@ def demo_cases() -> list[CaseSnapshot]:
             "ppe_type": "gloves",
             "status": CaseStatus.RECTIFICATION_OPEN,
             "occurred_at": "2026-08-07T10:30:00+08:00",
-            "rectification_responsible_party_id": "team-structure-01",
+            "rectification_responsible_party_id": "team-carpentry-01",
             "rectification_due_at": "2026-08-08T18:00:00+08:00",
-            "investigation_factory": _rebar_gloves_investigation,
+            "investigation_factory": _board_gloves_investigation,
         },
         {
             "case_id": "case-recheck-no-evidence",
@@ -318,7 +321,7 @@ def demo_cases() -> list[CaseSnapshot]:
             "ppe_type": "gloves",
             "status": CaseStatus.PENDING_REVIEW,
             "occurred_at": "2026-08-07T11:00:00+08:00",
-            "investigation_factory": _rotating_equipment_investigation,
+            "investigation_factory": _climbing_gloves_investigation,
         },
     ]
     cases = []
@@ -384,11 +387,11 @@ def demo_cases() -> list[CaseSnapshot]:
             version=1 + len(closed_transitions),
             candidate=closed_candidate,
             vlm_review=_confirmed_review(closed_candidate),
-            investigation=_vehicle_vest_investigation(closed_candidate),
-            rectification_responsible_party_id="team-logistics-01",
+            investigation=_timber_vest_investigation(closed_candidate),
+            rectification_responsible_party_id="team-carpentry-02",
             rectification_due_at="2026-08-08T10:00:00+08:00",
             rectification_evidence=[_closed_evidence()],
-            rectification_description="已佩戴高可视背心",
+            rectification_description="已穿戴安全背心",
             recheck_conclusion="整改证据充分，复查通过",
             created_at=closed_candidate.occurred_at,
             updated_at=closed_at,
@@ -408,7 +411,7 @@ def demo_submissions() -> list[RectificationEvidenceSubmissionRecord]:
             actor_role="SITE_SAFETY_OFFICER",
             reason="现场已完成整改",
             created_at="2026-08-07T12:01:00+08:00",
-            description="已佩戴高可视背心",
+            description="已穿戴安全背心",
             evidence=[_closed_evidence()],
         ),
     ]

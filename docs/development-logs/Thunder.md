@@ -443,6 +443,7 @@
 ### 当日目标
 
 * 将实时视频推理接入后端分析会话，并确保停止会话能够结束正在运行的视频读取和推理。
+* 按现有视频素材重编固定六路演示场景，并保持现有前端结构、接口和单 PPE 案件模型不变。
 
 ### 开发记录
 
@@ -462,13 +463,21 @@
   * 完成：消除 Chroma 懒加载测试对本机是否安装 `chromadb` 的隐式依赖，使缺失可选依赖的错误路径可稳定复现。
   * 实现：通过测试级导入替身显式触发 `ImportError`，继续断言适配器仅在实际连接时抛出 `ChromaDependencyUnavailable`。
   * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py -q`，4 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest`，346 项通过、1 项真实 RAG 跳过；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`cd frontend && npm test`，42 项通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端与前端未配置 lint，未运行。
+* 16:11 `feat(demo): 按现有视频重编六路演示场景`
+  * 完成：将演示固定为安全切割、无背心切割、无手套装订木板、无背心无手套攀爬、三类 PPE 均缺失的木料组装、多人混合穿戴六路；各路候选数固定为 0、1、1、2、3、7。
+  * 实现：重配视频、区域、任务和 PPE 规则；夹具分析支持同一路视频生成多个工人和多项 PPE 候选，同一工人的候选共享人员轨迹，现有六路前端、API、数据库结构和单 PPE 案件模型保持不变。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/adapters/database/test_seed.py tests/api/test_demo_api.py tests/api/test_analysis_sessions.py tests/api/test_cases_api.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py tests/domain/test_resolver.py tests/integration/test_end_to_end.py tests/modules/investigation/test_agent.py tests/modules/investigation/test_config.py tests/modules/investigation/test_fake.py tests/modules/investigation/test_service.py tests/modules/investigation/test_tools.py tests/services/test_session_manager_sql_persistence.py -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent' --tb=short`，138 项通过、2 项因本地环境配置排除；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent and not test_rag_configuration_is_separate_from_vlm_configuration and not test_defaults_are_used_without_vlm_env'`，342 项通过、1 项跳过、4 项因本地环境配置排除；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests/modules/investigation/test_config.py::test_agent_settings_defaults backend/tests/modules/investigation/test_config.py::test_deepseek_key_selects_real_investigation_agent backend/tests/modules/requirements_rag/test_rag_config.py::test_rag_configuration_is_separate_from_vlm_configuration backend/tests/modules/vlm_review/test_config.py::test_defaults_are_used_without_vlm_env -q`，4 项通过；合计完整后端回归 346 项通过、1 项跳过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端未配置 lint 和类型检查，未运行。
 
 ### 问题与处理
 
 * 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
 * 当前后端虚拟环境的 `asyncio` 默认线程池即使执行空函数也无法退出；真实视觉适配器改用会话受控线程并通过停止回归测试，避免会话和测试进程被默认线程池阻塞。
 * 当前虚拟环境自动加载第三方 pytest 插件后会使分析会话集成测试中的 AnyIO 工作线程挂起；禁用非项目所需插件后完整回归通过。原 Chroma 测试还错误假设可选依赖未安装，已改为显式模拟缺失依赖。
+* 本地 `backend/.env` 会覆盖默认配置并干扰 4 项配置测试；在仓库根目录隔离该环境后补跑，4 项均通过，未修改或提交本地环境文件。
+* 前端首次构建因本地缺少已声明的开发依赖失败；执行 `cd frontend && npm ci --include=dev` 后构建通过。安装过程报告 3 个 high 级依赖审计问题，本切片未执行可能改变依赖版本的自动修复。
+* 当前机器没有 `/data/demo` 目录且仓库内不包含演示视频，因此仅验证了六路编排逻辑，未执行真实视频播放和时长核对。
 
 ### 后续计划
 
 * 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。
+* 在演示环境将六个约定视频挂载到 `/data/demo` 后，执行六路播放与案件数量冒烟验收。

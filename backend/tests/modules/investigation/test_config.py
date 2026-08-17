@@ -64,7 +64,7 @@ def test_default_configuration_is_resolved_relative_to_package_not_cwd(
     context = MemorySiteContext()
 
     assert len(context.list_videos()) == 6
-    assert assigned_task(context, "CAM-03") == "HANDLING_REBAR"
+    assert assigned_task(context, "CAM-03") == "BOARD_FASTENING"
 
 
 def test_swapping_only_cam_03_and_cam_04_assignments_swaps_permit_tasks(
@@ -83,8 +83,8 @@ def test_swapping_only_cam_03_and_cam_04_assignments_swaps_permit_tasks(
 
     context = MemorySiteContext(scene_assignments_path=path)
 
-    assert assigned_task(context, "CAM-03") == "ROTATING_EQUIPMENT_OPERATION"
-    assert assigned_task(context, "CAM-04") == "HANDLING_REBAR"
+    assert assigned_task(context, "CAM-03") == "CLIMBING_WORK"
+    assert assigned_task(context, "CAM-04") == "BOARD_FASTENING"
 
 
 def test_duplicate_task_codes_fail_configuration_loading(tmp_path: Path) -> None:

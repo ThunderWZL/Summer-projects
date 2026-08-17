@@ -38,7 +38,7 @@ def test_seed_creates_the_six_deterministic_channels(tmp_path) -> None:
     assert report.zones == 6
     assert report.cameras == 6
     assert report.videos == 6
-    assert report.work_permits == 5
+    assert report.work_permits == 6
     assert report.task_ppe_matrices == 5
     assert report.responsible_parties == 6
     assert report.users == 2
@@ -54,35 +54,39 @@ def test_seed_creates_the_six_deterministic_channels(tmp_path) -> None:
     assert [(camera.id, camera.zone_id) for camera in cameras] == [
         (f"CAM-0{index}", f"zone-0{index}") for index in range(1, 7)
     ]
-    assert [video.id for video in videos] == [
-        f"video-0{index}" for index in range(1, 7)
-    ]
+    assert {video.id for video in videos} == {
+        "video-safe-01",
+        "video-no-vest-02",
+        "video-no-gloves-01",
+        "video-no-vest-gloves-02",
+        "video-no-ppe",
+        "video-mixed-wearing",
+    }
     assert all(video.duration_ms == 600_000 for video in videos)
     assert all(video.scenario_started_at.tzinfo is not None for video in videos)
     engine.dispose()
 
 
-def test_seed_preserves_the_deliberate_business_differences(tmp_path) -> None:
+def test_seed_preserves_the_recomposed_ppe_rules(tmp_path) -> None:
     engine, session_factory, _ = make_seeded_session(tmp_path)
 
     with session_factory() as session:
         zone_01_permits = session.scalars(
             select(WorkPermitModel).where(WorkPermitModel.zone_id == "zone-01")
         ).all()
-        rebar = session.get(TaskPpeMatrixModel, "HANDLING_REBAR")
-        rotating = session.get(
-            TaskPpeMatrixModel, "ROTATING_EQUIPMENT_OPERATION"
-        )
-        general = session.get(TaskPpeMatrixModel, "GENERAL_DUTY")
+        cutting = session.get(TaskPpeMatrixModel, "MATERIAL_CUTTING")
+        climbing = session.get(TaskPpeMatrixModel, "CLIMBING_WORK")
 
-    assert zone_01_permits == []
-    assert rebar is not None and "gloves" in rebar.required_ppe_json
-    assert rotating is not None and "gloves" not in rotating.required_ppe_json
-    assert rotating.exception_note == (
-        "旋转设备旁不宜简单要求佩戴手套，应评估卷入风险并采取防卷入措施"
+    assert [permit.task_code for permit in zone_01_permits] == [
+        "MATERIAL_CUTTING"
+    ]
+    assert cutting is not None
+    assert set(cutting.required_ppe_json) == {"helmet", "gloves", "vest"}
+    assert climbing is not None
+    assert set(climbing.required_ppe_json) == {"helmet", "gloves", "vest"}
+    assert climbing.exception_note == (
+        "视频中的其他穿戴不计作高可视安全背心"
     )
-    assert general is not None and general.required_ppe_json == []
-    assert general.exception_note == "普通作业无额外防护要求"
     engine.dispose()
 
 
@@ -135,7 +139,7 @@ def test_seed_is_idempotent(tmp_path) -> None:
         "zones": 6,
         "cameras": 6,
         "videos": 6,
-        "work_permits": 5,
+        "work_permits": 6,
         "task_ppe_matrix": 5,
         "responsible_parties": 6,
         "users": 2,
@@ -163,7 +167,7 @@ def test_seed_rejects_a_permit_without_a_task_matrix(monkeypatch) -> None:
     monkeypatch.setattr(seed_module, "MemorySiteContext", MissingMatrixContext)
 
     with Session() as session:
-        with pytest.raises(ValueError, match="wp-0201 has no task matrix"):
+        with pytest.raises(ValueError, match="wp-0101 has no task matrix"):
             seed_database(session)
 
 

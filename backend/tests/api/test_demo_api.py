@@ -20,15 +20,15 @@ def test_demo_videos_expose_six_traceable_channels() -> None:
     videos = response.json()
     assert len(videos) == 6
     assert videos[1] == {
-        "video_id": "video-02",
+        "video_id": "video-no-vest-02",
         "camera_id": "CAM-02",
-        "camera_name": "切割机位",
+        "camera_name": "无背心2切割物料机位",
         "zone_id": "zone-02",
-        "zone_name": "切割区",
-        "title": "切割区",
+        "zone_name": "无背心2切割物料区",
+        "title": "无背心2｜切割物料",
         "duration_ms": 600000,
         "scenario_started_at": "2026-08-07T09:00:00+08:00",
-        "content_url": "/api/v1/demo/videos/video-02/content",
+        "content_url": "/api/v1/demo/videos/video-no-vest-02/content",
     }
 
 
@@ -40,6 +40,7 @@ def test_demo_context_exposes_business_data_without_private_file_paths() -> None
     assert len(context["cameras"]) == 6
     assert len(context["zones"]) == 6
     assert {item["permit_id"] for item in context["work_permits"]} == {
+        "wp-0101",
         "wp-0201",
         "wp-0301",
         "wp-0401",

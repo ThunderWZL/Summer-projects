@@ -52,17 +52,20 @@ def make_candidate(camera_id: str) -> CandidateEvidence:
     )
 
 
-def test_default_profile_resolves_rebar_and_rotating_equipment_differently() -> None:
+def test_default_profile_resolves_board_and_climbing_tasks() -> None:
     resolver = DeterministicInvestigationResolver(MemorySiteContext())
 
-    rebar = resolver.resolve(make_candidate("CAM-03"))
-    rotating = resolver.resolve(make_candidate("CAM-04"))
+    board = resolver.resolve(make_candidate("CAM-03"))
+    climbing = resolver.resolve(make_candidate("CAM-04"))
 
-    assert rebar.applicable_task == "HANDLING_REBAR"
-    assert PpeType.GLOVES in rebar.required_ppe
-    assert rotating.applicable_task == "ROTATING_EQUIPMENT_OPERATION"
-    assert PpeType.GLOVES not in rotating.required_ppe
-    assert rotating.exception_note
+    assert board.applicable_task == "BOARD_FASTENING"
+    assert climbing.applicable_task == "CLIMBING_WORK"
+    assert set(board.required_ppe) == set(climbing.required_ppe) == {
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    }
+    assert climbing.exception_note
 
 
 def test_same_resolver_input_is_deterministic() -> None:
@@ -87,8 +90,17 @@ def test_unknown_camera_reports_only_missing_zone() -> None:
     assert result.required_ppe == []
 
 
+class NoPermitContext(MemorySiteContext):
+    def find_active_work_permits(
+        self, zone_id: str, occurred_at: datetime
+    ) -> list[WorkPermit]:
+        if zone_id == "zone-01":
+            return []
+        return super().find_active_work_permits(zone_id, occurred_at)
+
+
 def test_zone_without_permit_or_human_task_requests_both_facts() -> None:
-    result = DeterministicInvestigationResolver(MemorySiteContext()).resolve(
+    result = DeterministicInvestigationResolver(NoPermitContext()).resolve(
         make_candidate("CAM-01")
     )
 
@@ -97,34 +109,42 @@ def test_zone_without_permit_or_human_task_requests_both_facts() -> None:
 
 
 def test_valid_human_task_is_resolved_but_does_not_replace_missing_permit() -> None:
-    result = DeterministicInvestigationResolver(MemorySiteContext()).resolve(
-        make_candidate("CAM-01"), {"task_code": "HANDLING_REBAR"}
+    result = DeterministicInvestigationResolver(NoPermitContext()).resolve(
+        make_candidate("CAM-01"), {"task_code": "BOARD_FASTENING"}
     )
 
     assert result.missing_fields == ["active_work_permit"]
     assert result.conflicts == []
-    assert result.applicable_task == "HANDLING_REBAR"
-    assert result.required_ppe == [PpeType.GLOVES]
+    assert result.applicable_task == "BOARD_FASTENING"
+    assert set(result.required_ppe) == {
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    }
 
 
 def test_human_task_matching_active_permit_has_no_conflict() -> None:
     result = DeterministicInvestigationResolver(MemorySiteContext()).resolve(
-        make_candidate("CAM-03"), {"task_code": "HANDLING_REBAR"}
+        make_candidate("CAM-03"), {"task_code": "BOARD_FASTENING"}
     )
 
     assert result.conflicts == []
-    assert result.applicable_task == "HANDLING_REBAR"
+    assert result.applicable_task == "BOARD_FASTENING"
 
 
 def test_active_permit_wins_when_human_task_conflicts() -> None:
     result = DeterministicInvestigationResolver(MemorySiteContext()).resolve(
         make_candidate("CAM-03"),
-        {"task_code": "ROTATING_EQUIPMENT_OPERATION"},
+        {"task_code": "CLIMBING_WORK"},
     )
 
     assert result.conflicts == ["human_task_conflicts_with_active_permit"]
-    assert result.applicable_task == "HANDLING_REBAR"
-    assert result.required_ppe == [PpeType.GLOVES]
+    assert result.applicable_task == "BOARD_FASTENING"
+    assert set(result.required_ppe) == {
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    }
 
 
 def test_non_whitelisted_human_fields_cannot_change_resolver_output() -> None:
@@ -136,7 +156,7 @@ def test_non_whitelisted_human_fields_cannot_change_resolver_output() -> None:
         {
             "required_ppe": ["gloves"],
             "hazards": ["伪造危害"],
-            "applicable_task": "HANDLING_REBAR",
+            "applicable_task": "BOARD_FASTENING",
         },
     )
 
@@ -145,7 +165,7 @@ def test_non_whitelisted_human_fields_cannot_change_resolver_output() -> None:
 
 @pytest.mark.parametrize("task_code", [123, "", "   "])
 def test_invalid_human_task_code_is_a_fixed_conflict(task_code: object) -> None:
-    result = DeterministicInvestigationResolver(MemorySiteContext()).resolve(
+    result = DeterministicInvestigationResolver(NoPermitContext()).resolve(
         make_candidate("CAM-01"), {"task_code": task_code}
     )
 
@@ -166,9 +186,9 @@ class MultiplePermitContext(MemorySiteContext):
             WorkPermit(
                 permit_id="wp-0302",
                 zone_id="zone-03",
-                task_code="ROTATING_EQUIPMENT_OPERATION",
+                task_code="CLIMBING_WORK",
                 hazards=["卷入风险"],
-                responsible_party_id="team-mechanical-01",
+                responsible_party_id="team-climbing-01",
                 starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
                 ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
             ),
@@ -188,7 +208,7 @@ def test_multiple_different_permit_tasks_report_conflict_without_selecting_task(
 
 class MissingMatrixContext(MemorySiteContext):
     def get_task_ppe_matrix(self, task_code: str):
-        if task_code == "HANDLING_REBAR":
+        if task_code == "BOARD_FASTENING":
             return None
         return super().get_task_ppe_matrix(task_code)
 
@@ -199,7 +219,7 @@ def test_missing_matrix_retains_task_but_has_no_derived_applicability() -> None:
     )
 
     assert result.missing_fields == ["task_ppe_matrix"]
-    assert result.applicable_task == "HANDLING_REBAR"
+    assert result.applicable_task == "BOARD_FASTENING"
     assert result.hazards == []
     assert result.required_ppe == []
 
@@ -212,13 +232,21 @@ def test_results_do_not_share_mutable_lists_with_context_or_each_other() -> None
     first.hazards.append("被测试修改")
     first.required_ppe.append(PpeType.HELMET)
     second = resolver.resolve(make_candidate("CAM-03"))
-    matrix = context.get_task_ppe_matrix("HANDLING_REBAR")
+    matrix = context.get_task_ppe_matrix("BOARD_FASTENING")
 
     assert matrix is not None
-    assert second.hazards == ["手部伤害风险"]
-    assert second.required_ppe == [PpeType.GLOVES]
-    assert matrix.hazards == ["手部伤害风险"]
-    assert matrix.required_ppe == [PpeType.GLOVES]
+    assert second.hazards == ["木刺", "钉装伤害"]
+    assert second.required_ppe == [
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    ]
+    assert matrix.hazards == ["木刺", "钉装伤害"]
+    assert matrix.required_ppe == [
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    ]
 
 
 class ChangedCurrentContext(MemorySiteContext):
@@ -230,7 +258,7 @@ class ChangedCurrentContext(MemorySiteContext):
             return permits
         return [
             permit.model_copy(
-                update={"task_code": "ROTATING_EQUIPMENT_OPERATION"}, deep=True
+                update={"task_code": "CLIMBING_WORK"}, deep=True
             )
             for permit in permits
         ]
@@ -290,9 +318,13 @@ def test_recorded_investigation_keeps_old_applicability_after_config_changes() -
     )
     stored = store.get("case-history")
 
-    assert current.applicable_task == "ROTATING_EQUIPMENT_OPERATION"
+    assert current.applicable_task == "CLIMBING_WORK"
     assert stored is not None
     assert stored.investigation is not None
-    assert stored.investigation.applicable_task == "HANDLING_REBAR"
-    assert stored.investigation.hazards == ["手部伤害风险"]
-    assert stored.investigation.required_ppe == [PpeType.GLOVES]
+    assert stored.investigation.applicable_task == "BOARD_FASTENING"
+    assert stored.investigation.hazards == ["木刺", "钉装伤害"]
+    assert stored.investigation.required_ppe == [
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    ]
