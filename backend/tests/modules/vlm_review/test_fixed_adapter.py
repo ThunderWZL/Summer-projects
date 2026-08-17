@@ -72,13 +72,13 @@ def test_auto_confirms_sufficient_evidence() -> None:
     assert payload["evidence_sufficient"] is True
 
 
-def test_auto_rejects_low_confidence() -> None:
+def test_auto_marks_low_confidence_uncertain() -> None:
     response = asyncio.run(
         complete(make_candidate(confidence=0.21), FixedVlmScenario.AUTO)
     )
 
     payload = json.loads(response.content)
-    assert payload["verdict"] == "REJECTED"
+    assert payload["verdict"] == "UNCERTAIN"
     assert payload["evidence_sufficient"] is False
 
 
@@ -117,7 +117,7 @@ def test_auto_confirms_three_frame_missing_positive_association_for_vest() -> No
     assert (payload["verdict"], payload["persistent"]) == ("CONFIRMED", True)
 
 
-def test_auto_rejects_missing_positive_association_with_a_missing_frame() -> None:
+def test_auto_marks_missing_frame_uncertain() -> None:
     response = asyncio.run(
         complete(
             make_candidate(
@@ -131,7 +131,7 @@ def test_auto_rejects_missing_positive_association_with_a_missing_frame() -> Non
 
     payload = json.loads(response.content)
     assert (payload["verdict"], payload["evidence_sufficient"]) == (
-        "REJECTED",
+        "UNCERTAIN",
         False,
     )
 
@@ -153,7 +153,8 @@ def test_reject_scenario_forces_rejected() -> None:
 
     payload = json.loads(response.content)
     assert payload["verdict"] == "REJECTED"
-    assert payload["evidence_sufficient"] is False
+    assert payload["evidence_sufficient"] is True
+    assert payload["reason"].startswith("排除违规：")
 
 
 def test_uncertain_scenario_returns_uncertain() -> None:
@@ -186,7 +187,7 @@ def test_uncertain_scenario_overrides_otherwise_sufficient_three_frame_evidence(
     )
 
 
-def test_negative_class_without_representative_observation_is_insufficient() -> None:
+def test_negative_class_without_representative_observation_is_uncertain() -> None:
     valid_missing = make_candidate(
         evidence_kind="MISSING_POSITIVE_ASSOCIATION",
         frame_roles=("REPRESENTATIVE",),
@@ -199,7 +200,7 @@ def test_negative_class_without_representative_observation_is_insufficient() -> 
 
     payload = json.loads(response.content)
     assert (payload["verdict"], payload["evidence_sufficient"]) == (
-        "REJECTED",
+        "UNCERTAIN",
         False,
     )
 

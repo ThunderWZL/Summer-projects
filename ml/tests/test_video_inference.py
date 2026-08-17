@@ -449,6 +449,35 @@ class VideoInferenceRunnerTest(unittest.TestCase):
         self.assertEqual(len(model.calls), 2)
         self.assertTrue(capture.released)
 
+    def test_stop_request_ends_playback_and_releases_capture(self):
+        capture = FakeCapture(
+            [np.full((2, 2, 3), index, dtype=np.uint8) for index in range(6)],
+            fps=10.0,
+        )
+        stop_requested = Event()
+
+        def render(frame, _detections):
+            if int(frame[0, 0, 0]) == 1:
+                stop_requested.set()
+            return frame.copy()
+
+        runner = VideoInferenceRunner(
+            FakeModel(),
+            cv2_module=FakeCv2(capture),
+            target_fps=5.0,
+            renderer=render,
+        )
+
+        output = list(
+            runner.iter_video(
+                Path("fixture.mp4"),
+                stop_requested=stop_requested.is_set,
+            )
+        )
+
+        self.assertEqual([frame.frame_index for frame in output], [0, 1])
+        self.assertTrue(capture.released)
+
     def test_realtime_warms_first_analysis_before_playback(self):
         capture = FakeCapture(
             [np.zeros((2, 2, 3), dtype=np.uint8) for _ in range(2)],

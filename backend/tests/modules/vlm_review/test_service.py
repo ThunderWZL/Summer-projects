@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime
 
 import pytest
@@ -160,6 +161,37 @@ class PermanentFailureModel:
         )
 
 
+class SemanticFailureThenSuccessModel:
+    def __init__(self) -> None:
+        self.requests = []
+        self._success = FixedVlmAdapter(scenario=FixedVlmScenario.CONFIRM)
+
+    async def complete(self, request) -> VlmRawResponse:
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            return VlmRawResponse(
+                model_name="semantic-flaky-model",
+                content=json.dumps(
+                    {
+                        "candidate_id": "candidate-01",
+                        "verdict": "REJECTED",
+                        "person_track_id": "track-17",
+                        "ppe_type": "helmet",
+                        "association": "AMBIGUOUS",
+                        "body_part_visible": True,
+                        "persistent": True,
+                        "poster_or_reflection": False,
+                        "evidence_sufficient": True,
+                        "evidence_timestamps_ms": [1_500],
+                        "reason": "人员头部裸露，未见安全帽，故拒绝安全帽佩戴关联。",
+                    },
+                    ensure_ascii=False,
+                ),
+                latency_ms=1,
+            )
+        return await self._success.complete(request)
+
+
 def test_confirmed_review_moves_case_to_vlm_reviewed() -> None:
     case = CaseSnapshot(
         case_id="case-01",
@@ -184,7 +216,7 @@ def test_confirmed_review_moves_case_to_vlm_reviewed() -> None:
     assert store.case.transitions[-1].to_status is CaseStatus.VLM_REVIEWED
 
 
-def test_insufficient_evidence_moves_case_to_vlm_rejected() -> None:
+def test_insufficient_evidence_is_uncertain_and_moves_case_to_vlm_rejected() -> None:
     case = CaseSnapshot(
         case_id="case-01",
         session_id="session-01",
@@ -201,7 +233,7 @@ def test_insufficient_evidence_moves_case_to_vlm_rejected() -> None:
 
     review = asyncio.run(service.review_candidate("candidate-01"))
 
-    assert review.verdict is VlmVerdict.REJECTED
+    assert review.verdict is VlmVerdict.UNCERTAIN
     assert store.case.status is CaseStatus.VLM_REJECTED
 
 
@@ -264,6 +296,31 @@ def test_parse_failure_is_retried_then_successfully_reviewed() -> None:
     assert review.verdict is VlmVerdict.CONFIRMED
     assert store.case.status is CaseStatus.VLM_REVIEWED
     assert store.case.version == 2
+
+
+def test_semantic_failure_retry_explains_error_before_accepting_result() -> None:
+    case = CaseSnapshot(
+        case_id="case-01",
+        session_id="session-01",
+        camera_id="CAM-01",
+        person_track_id="track-17",
+        ppe_type="helmet",
+        status=CaseStatus.YOLO_CANDIDATE,
+        version=1,
+        candidate=make_candidate(),
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    model = SemanticFailureThenSuccessModel()
+    service, store = make_service(case, model, max_retries=1)
+
+    review = asyncio.run(service.review_candidate("candidate-01"))
+
+    assert len(model.requests) == 2
+    assert "上次输出存在语义错误" in model.requests[1].prompt
+    assert "结论与理由语义不一致" in model.requests[1].prompt
+    assert review.verdict is VlmVerdict.CONFIRMED
+    assert store.case.status is CaseStatus.VLM_REVIEWED
 
 
 def test_exhausted_parse_retries_raise_without_changing_case() -> None:

@@ -14,11 +14,11 @@
     "source_pdf_sha256": "56c7c8407be2a03d5f149c1fc024f0101313465cf6470b7cf173ba4e7b919706",
     "source_artifact_sha256": "56c7c8407be2a03d5f149c1fc024f0101313465cf6470b7cf173ba4e7b919706",
     "verification_url": null,
-    "extraction_status": "not_downloaded",
-    "parser_version": null,
-    "derived_text_sha256": null,
-    "human_review_status": null,
-    "local_path": null
+    "extraction_status": "ready",
+    "parser_version": "pymupdf-1.28.0",
+    "derived_text_sha256": "e54d6abfe6331eb3243e8641a47cd03f52edbd6de8e7daf20813260b86ae09ea",
+    "human_review_status": "reviewed",
+    "local_path": "../../../../../data/rag-corpus/gb-39800-12-2025.json"
   },
   {
     "document_id": "gb-39800-1-2020",
@@ -35,11 +35,11 @@
     "source_pdf_sha256": "2bd38a9b27ca9b214a2573ec6ae4c7940932e18f9d2bbf91dfa27db819330de5",
     "source_artifact_sha256": "2bd38a9b27ca9b214a2573ec6ae4c7940932e18f9d2bbf91dfa27db819330de5",
     "verification_url": null,
-    "extraction_status": "not_downloaded",
-    "parser_version": null,
-    "derived_text_sha256": null,
-    "human_review_status": null,
-    "local_path": null
+    "extraction_status": "ready",
+    "parser_version": "user-ocr-txt-v1",
+    "derived_text_sha256": "07672c66d8471e9d5cf83318a13b3dc2299ef4751cdd7e91f0eac2741e5fa3b5",
+    "human_review_status": "reviewed",
+    "local_path": "../../../../../data/rag-corpus/gb-39800-1-2020.json"
   },
   {
     "document_id": "construction-worker-ppe-guide-2021",
@@ -56,11 +56,11 @@
     "source_artifact_sha256": "a75e86011fb12cd8d2eb51cb129d027f77cf014351082fb31ce13eb37ca24d65",
     "standard_no": null,
     "verification_url": null,
-    "extraction_status": "not_downloaded",
-    "parser_version": null,
-    "derived_text_sha256": null,
-    "human_review_status": null,
-    "local_path": null
+    "extraction_status": "ready",
+    "parser_version": "pymupdf-1.28.0",
+    "derived_text_sha256": "5029391a7565679bb92443aa6b7d7a4247f09f39249e77bc224c57bd7ef34416",
+    "human_review_status": "reviewed",
+    "local_path": "../../../../../data/rag-corpus/construction-worker-ppe-guide-2021.json"
   },
   {
     "document_id": "gb-55034-2022",
@@ -77,11 +77,11 @@
     "source_level": "supplemental",
     "source_pdf_sha256": "f3c3f4dad8954b53c20c95a801b592adf843c28867caf596b2c9f9851c9c593e",
     "source_artifact_sha256": "f3c3f4dad8954b53c20c95a801b592adf843c28867caf596b2c9f9851c9c593e",
-    "extraction_status": "not_downloaded",
-    "parser_version": null,
-    "derived_text_sha256": null,
-    "human_review_status": null,
-    "local_path": null
+    "extraction_status": "ready",
+    "parser_version": "user-ocr-txt-v1",
+    "derived_text_sha256": "8af89d84513981d0379d35bb91e6cfe02088ac505181cd87d22f4c931a949200",
+    "human_review_status": "reviewed",
+    "local_path": "../../../../../data/rag-corpus/gb-55034-2022.json"
   },
   {
     "document_id": "samr-ppe-enforcement-2025-77",
@@ -96,12 +96,12 @@
     "role": "enforcement_context",
     "source_level": "background",
     "verification_url": null,
-    "extraction_status": "not_downloaded",
+    "extraction_status": "ready",
     "source_pdf_sha256": null,
-    "source_artifact_sha256": null,
-    "parser_version": null,
-    "derived_text_sha256": null,
-    "human_review_status": null,
-    "local_path": null
+    "source_artifact_sha256": "9f4e613a2b691877b7da6702b000a8a7bc493e78aa21081f1a43569350976a21",
+    "parser_version": "lxml-html-main-node-v1",
+    "derived_text_sha256": "9f4e613a2b691877b7da6702b000a8a7bc493e78aa21081f1a43569350976a21",
+    "human_review_status": "reviewed",
+    "local_path": "../../../../../data/rag-corpus/samr-ppe-enforcement-2025-77.json"
   }
 ]

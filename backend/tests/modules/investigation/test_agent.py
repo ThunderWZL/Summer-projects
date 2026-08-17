@@ -10,6 +10,7 @@ import pytest
 from app.contracts import Citation, PpeType
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.investigation import (
+    InvestigationAgentFailed,
     InvestigationAgentOutputInvalid,
     InvestigationToolRoundsExceeded,
 )
@@ -27,17 +28,17 @@ def make_context() -> AgentInvestigationContext:
     return AgentInvestigationContext(
         case_id="case-03",
         zone_id="zone-03",
-        zone_name="钢筋区",
+        zone_name="无手套1装订木板区",
         occurred_at=datetime.fromisoformat("2026-08-07T10:00:00+08:00"),
         ppe_type=PpeType.GLOVES,
-        applicable_task="HANDLING_REBAR",
-        hazards=["手部伤害风险"],
-        required_ppe=[PpeType.GLOVES],
+        applicable_task="BOARD_FASTENING",
+        hazards=["木刺", "钉装伤害"],
+        required_ppe=[PpeType.HELMET, PpeType.GLOVES, PpeType.VEST],
         rectification_window_minutes=30,
     )
 
 
-def make_citation(excerpt: str = "钢筋搬运应根据风险配备手部防护。") -> Citation:
+def make_citation(excerpt: str = "木板装订应根据风险配备手部防护。") -> Citation:
     return Citation(
         document_title="个体防护装备配备规范",
         standard_no="GB 39800.12-2025",
@@ -68,8 +69,8 @@ def tool_call(name: str, arguments: dict[str, object] | str) -> dict[str, object
 
 def final_draft(**overrides: object) -> str:
     draft: dict[str, object] = {
-        "recommendation": "钢筋搬运存在手部伤害风险，应按要求佩戴手套。",
-        "responsible_party_id": "team-structure-01",
+        "recommendation": "木板装订存在手部伤害风险，应按要求佩戴手套。",
+        "responsible_party_id": "team-carpentry-01",
         "due_at": "2026-08-07T10:30:00+08:00",
         "rectification_reason": "在规则时限内完成手部防护整改",
         "citation_indexes": [0],
@@ -93,7 +94,7 @@ def test_scripted_agent_runs_party_then_rag_then_returns_final_json() -> None:
                 "tool_calls": [
                     tool_call(
                         "search_authoritative_requirements",
-                        {"q": "钢筋搬运手套要求", "top_k": 3},
+                        {"q": "木板装订手套要求", "top_k": 3},
                     )
                 ]
             },
@@ -103,9 +104,9 @@ def test_scripted_agent_runs_party_then_rag_then_returns_final_json() -> None:
 
     result = InvestigationAgent(model, make_tools()).investigate(make_context())
 
-    assert result.recommendation == "钢筋搬运存在手部伤害风险，应按要求佩戴手套。"
+    assert result.recommendation == "木板装订存在手部伤害风险，应按要求佩戴手套。"
     assert result.rectification_recommendation is not None
-    assert result.rectification_recommendation.responsible_party_id == "team-structure-01"
+    assert result.rectification_recommendation.responsible_party_id == "team-carpentry-01"
     assert result.citations == [make_citation()]
     assert result.tool_trace == [
         "list_eligible_responsible_parties",
@@ -127,7 +128,7 @@ def test_agent_supplies_frozen_prompt_and_exact_tool_schemas() -> None:
     assert "required_ppe" in system_prompt
     assert "citation_indexes" in system_prompt
     assert isinstance(first_messages[1]["content"], str)
-    assert json.loads(first_messages[1]["content"])["applicable_task"] == "HANDLING_REBAR"
+    assert json.loads(first_messages[1]["content"])["applicable_task"] == "BOARD_FASTENING"
     assert [schema["function"]["name"] for schema in model.tool_schemas[0]] == [
         "list_eligible_responsible_parties",
         "search_authoritative_requirements",
@@ -205,6 +206,7 @@ def test_deepseek_adapter_uses_official_non_thinking_tool_calling(
         temperature=0,
         timeout=30,
         max_retries=2,
+        max_output_tokens=1024,
     )
     schemas = [
         {
@@ -226,14 +228,48 @@ def test_deepseek_adapter_uses_official_non_thinking_tool_calling(
         "temperature": 0,
         "timeout": 30,
         "max_retries": 2,
+        "max_tokens": 1024,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
         "extra_body": {"thinking": {"type": "disabled"}},
     }
-    assert observed["schemas"] == schemas
+    assert observed["schemas"][0]["function"]["strict"] is True
     assert observed["bind_options"] == {
         "tool_choice": "auto",
-        "strict": False,
+        "strict": True,
     }
     assert response.tool_calls[0].id == "call-party-456"
+
+
+def test_deepseek_transport_failure_becomes_investigation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingBoundModel:
+        def invoke(self, _messages):
+            raise RuntimeError("connection unavailable")
+
+    class FakeChatDeepSeek:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def bind_tools(self, _schemas, **_kwargs):
+            return FailingBoundModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_deepseek",
+        SimpleNamespace(ChatDeepSeek=FakeChatDeepSeek),
+    )
+    adapter = DeepSeekChatModelAdapter(
+        api_key="configured-secret",
+        model="deepseek-v4-flash",
+        temperature=0,
+        timeout=30,
+        max_retries=2,
+        max_output_tokens=1024,
+    )
+
+    with pytest.raises(InvestigationAgentFailed, match="DeepSeek request failed"):
+        adapter.complete([{"role": "user", "content": "test"}], [])
 
 
 def test_repeated_tool_calls_are_preserved_in_trace() -> None:
@@ -356,7 +392,37 @@ def test_non_json_final_response_is_rejected() -> None:
     model = ScriptedFakeChatModel([{"content": "这不是 JSON"}])
 
     with pytest.raises(InvestigationAgentOutputInvalid, match="valid draft"):
-        InvestigationAgent(model, make_tools()).investigate(make_context())
+        InvestigationAgent(
+            model,
+            make_tools(),
+            max_output_retries=0,
+        ).investigate(make_context())
+
+
+def test_non_json_final_response_is_corrected_before_failing() -> None:
+    model = ScriptedFakeChatModel(
+        [
+            {
+                "tool_calls": [
+                    tool_call(
+                        "search_authoritative_requirements",
+                        {"q": "手套要求"},
+                    )
+                ]
+            },
+            {"content": "这不是 JSON"},
+            {
+                "content": json.dumps(
+                    {"recommendation": "解释", "citation_indexes": [0]}
+                )
+            },
+        ]
+    )
+
+    result = InvestigationAgent(model, make_tools()).investigate(make_context())
+
+    assert result.recommendation == "解释"
+    assert result.citations == [make_citation()]
 
 
 def test_citation_index_out_of_range_is_rejected() -> None:

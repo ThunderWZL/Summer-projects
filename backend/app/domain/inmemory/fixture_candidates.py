@@ -1,17 +1,48 @@
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from app.contracts import CandidateEvidence, EvidenceKind, FrameRole, PpeType
-from app.domain.inmemory.site_context import SCENARIO_STARTED_AT
 from app.domain.site_context import VideoInfo
 
+_SCENARIO_STARTED_AT = datetime.fromisoformat("2026-08-07T09:00:00+08:00")
 
-_SCENES: dict[str, tuple[PpeType, EvidenceKind, int]] = {
-    "CAM-01": (PpeType.HELMET, EvidenceKind.NEGATIVE_CLASS_DETECTION, 90_000),
-    "CAM-02": (PpeType.HELMET, EvidenceKind.NEGATIVE_CLASS_DETECTION, 150_000),
-    "CAM-03": (PpeType.GLOVES, EvidenceKind.MISSING_POSITIVE_ASSOCIATION, 210_000),
-    "CAM-04": (PpeType.GLOVES, EvidenceKind.MISSING_POSITIVE_ASSOCIATION, 270_000),
-    "CAM-05": (PpeType.VEST, EvidenceKind.MISSING_POSITIVE_ASSOCIATION, 330_000),
+
+@dataclass(frozen=True, slots=True)
+class _ScenarioCandidate:
+    ppe_type: PpeType
+    representative_ms: int
+    person_key: str
+
+
+_SCENES: dict[str, tuple[_ScenarioCandidate, ...]] = {
+    "CAM-01": (),
+    "CAM-02": (_ScenarioCandidate(PpeType.VEST, 150_000, "person-01"),),
+    "CAM-03": (_ScenarioCandidate(PpeType.GLOVES, 210_000, "person-01"),),
+    "CAM-04": (
+        _ScenarioCandidate(PpeType.VEST, 270_000, "person-01"),
+        _ScenarioCandidate(PpeType.GLOVES, 270_000, "person-01"),
+    ),
+    "CAM-05": (
+        _ScenarioCandidate(PpeType.HELMET, 300_000, "person-01"),
+        _ScenarioCandidate(PpeType.GLOVES, 300_000, "person-01"),
+        _ScenarioCandidate(PpeType.VEST, 300_000, "person-01"),
+    ),
+    "CAM-06": (
+        _ScenarioCandidate(PpeType.HELMET, 330_000, "person-01"),
+        _ScenarioCandidate(PpeType.GLOVES, 330_000, "person-01"),
+        _ScenarioCandidate(PpeType.HELMET, 360_000, "person-02"),
+        _ScenarioCandidate(PpeType.GLOVES, 360_000, "person-02"),
+        _ScenarioCandidate(PpeType.HELMET, 390_000, "person-03"),
+        _ScenarioCandidate(PpeType.GLOVES, 390_000, "person-03"),
+        _ScenarioCandidate(PpeType.VEST, 390_000, "person-03"),
+    ),
 }
+
+
+def _evidence_kind(ppe_type: PpeType) -> EvidenceKind:
+    if ppe_type is PpeType.HELMET:
+        return EvidenceKind.NEGATIVE_CLASS_DETECTION
+    return EvidenceKind.MISSING_POSITIVE_ASSOCIATION
 
 
 def build_fixture_candidate(
@@ -19,12 +50,27 @@ def build_fixture_candidate(
     session_id: str,
     namespace: str = "analysis",
     candidate_suffix: str = "primary",
+    *,
+    ppe_type: PpeType | None = None,
+    representative_ms: int | None = None,
+    person_track_id: str | None = None,
 ) -> CandidateEvidence | None:
-    scene = _SCENES.get(camera_id)
-    if scene is None:
-        return None
-    ppe_type, evidence_kind, representative_ms = scene
-    timestamps = (representative_ms - 1_000, representative_ms, representative_ms + 1_000)
+    if ppe_type is None:
+        scenarios = _SCENES.get(camera_id, ())
+        if not scenarios:
+            return None
+        scenario = scenarios[0]
+        ppe_type = scenario.ppe_type
+        representative_ms = scenario.representative_ms
+        person_track_id = f"track-{camera_id.lower()}-{scenario.person_key}"
+    else:
+        representative_ms = representative_ms or 90_000
+    evidence_kind = _evidence_kind(ppe_type)
+    timestamps = (
+        representative_ms - 1_000,
+        representative_ms,
+        representative_ms + 1_000,
+    )
     frames = []
     roles = (FrameRole.BEFORE, FrameRole.REPRESENTATIVE, FrameRole.AFTER)
     for timestamp_ms, role in zip(timestamps, roles, strict=True):
@@ -61,7 +107,10 @@ def build_fixture_candidate(
             ),
             "session_id": session_id,
             "camera_id": camera_id,
-            "person_track_id": f"track-{camera_id.lower()}-{ppe_type.value}",
+            "person_track_id": (
+                person_track_id
+                or f"track-{camera_id.lower()}-{ppe_type.value}"
+            ),
             "ppe_type": ppe_type,
             "evidence_kind": evidence_kind,
             "confidence": 0.91,
@@ -72,7 +121,7 @@ def build_fixture_candidate(
                 "minimum_frames": 3,
                 "window_ms": 2_000,
             },
-            "occurred_at": SCENARIO_STARTED_AT
+            "occurred_at": _SCENARIO_STARTED_AT
             + timedelta(milliseconds=representative_ms),
             "first_seen_ms": representative_ms - 500,
             "last_seen_ms": representative_ms + 500,
@@ -81,8 +130,22 @@ def build_fixture_candidate(
     )
 
 
-def candidate_for_video(
+def candidates_for_video(
     video: VideoInfo,
     session_id: str,
-) -> CandidateEvidence | None:
-    return build_fixture_candidate(video.camera_id, session_id)
+) -> list[CandidateEvidence]:
+    candidates = []
+    for scenario in _SCENES.get(video.camera_id, ()):
+        candidate = build_fixture_candidate(
+            video.camera_id,
+            session_id,
+            candidate_suffix=scenario.person_key,
+            ppe_type=scenario.ppe_type,
+            representative_ms=scenario.representative_ms,
+            person_track_id=(
+                f"track-{video.camera_id.lower()}-{scenario.person_key}"
+            ),
+        )
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates

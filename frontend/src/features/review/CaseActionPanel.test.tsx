@@ -143,6 +143,8 @@ describe("CaseActionPanel", () => {
     );
 
     expect(screen.getByText("当前没有可执行操作")).toBeTruthy();
+    expect(screen.getByText(/待项目审核/)).toBeTruthy();
+    expect(screen.queryByText(/PENDING_REVIEW/)).toBeNull();
     expect(screen.queryByRole("button", { name: "批准整改" })).toBeNull();
     expect(screen.queryByRole("button", { name: "驳回事件" })).toBeNull();
   });

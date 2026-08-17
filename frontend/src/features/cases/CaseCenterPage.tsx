@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { CaseApiError, fetchCases } from "./api";
-import { formatDateTime, PPE_LABELS, STATUS_LABELS } from "./format";
+import {
+  formatCaseReference,
+  formatDateTime,
+  formatZoneName,
+  PPE_LABELS,
+  STATUS_LABELS,
+} from "./format";
 import type {
   CaseFilters,
   CaseListItem,
@@ -125,7 +131,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
 
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const items: ActiveFilter[] = [];
-    const zoneName = context?.zones.find((zone) => zone.zone_id === filters.zone_id)?.name;
+    const zone = context?.zones.find((candidate) => candidate.zone_id === filters.zone_id);
     const partyName = context?.responsible_parties.find(
       (party) => party.party_id === filters.responsible_party_id,
     )?.name;
@@ -133,9 +139,14 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     if (filters.keyword) items.push({ key: "keyword", label: `关键词：${filters.keyword}` });
     if (filters.status) items.push({ key: "status", label: STATUS_LABELS[filters.status] });
     if (filters.ppe_type) items.push({ key: "ppe_type", label: PPE_LABELS[filters.ppe_type] });
-    if (filters.zone_id) items.push({ key: "zone_id", label: zoneName ?? filters.zone_id });
+    if (filters.zone_id) {
+      items.push({
+        key: "zone_id",
+        label: formatZoneName(filters.zone_id, zone?.name ?? "其他作业区域"),
+      });
+    }
     if (filters.responsible_party_id) {
-      items.push({ key: "responsible_party_id", label: partyName ?? filters.responsible_party_id });
+      items.push({ key: "responsible_party_id", label: partyName ?? "其他责任主体" });
     }
     if (filters.occurred_from) {
       items.push({ key: "occurred_from", label: `起始：${filters.occurred_from}` });
@@ -177,7 +188,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     <main className="case-center" aria-labelledby="case-center-title">
       <section className="case-center__intro">
         <div>
-          <p className="case-kicker">SAFETY INCIDENT TRIAGE</p>
+          <p className="case-kicker">安全事件分级处理</p>
           <h1 id="case-center-title">先处理需要人判断的事件</h1>
           <p className="case-center__lede">
             AI 已完成初步筛选。请按当前队列顺序补充事实、完成审核或确认整改结果。
@@ -196,7 +207,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
         />
         {stats?.top_repeat_risk ? (
           <p className="triage-summary__risk">
-            高频区域 <strong>{stats.top_repeat_risk.zone_name}</strong>
+            高频区域 <strong>{formatZoneName(stats.top_repeat_risk.zone_id, stats.top_repeat_risk.zone_name)}</strong>
             <span>{PPE_LABELS[stats.top_repeat_risk.ppe_type]}</span>
           </p>
         ) : null}
@@ -230,7 +241,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
             options={ALL_STATUSES.map((status) => [status, STATUS_LABELS[status]])}
           />
           <FilterSelect
-            label="PPE 类型"
+            label="防护装备"
             value={filters.ppe_type}
             onChange={(value) => updateFilter("ppe_type", value as PpeType | "")}
             options={VERIFIED_PPE.map((ppe) => [ppe, PPE_LABELS[ppe]])}
@@ -239,7 +250,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
             label="区域"
             value={filters.zone_id}
             onChange={(value) => updateFilter("zone_id", value)}
-            options={(context?.zones ?? []).map((zone) => [zone.zone_id, zone.name])}
+            options={(context?.zones ?? []).map((zone) => [zone.zone_id, formatZoneName(zone.zone_id, zone.name)])}
           />
           <FilterSelect
             label="责任主体"
@@ -291,7 +302,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
         <section className="case-results" aria-live="polite">
           <header className="case-results__heading">
             <div>
-              <p className="case-results__kicker">HUMAN REVIEW QUEUE</p>
+              <p className="case-results__kicker">人工处理队列</p>
               <h2>人工复核队列</h2>
               <p>{pagination ? `共 ${pagination.total_items} 起事件` : "正在读取事件总数"}</p>
             </div>
@@ -344,7 +355,7 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
 
           {!loading && !error && response?.items.length === 0 ? (
             <div className="case-state">
-              <span>0 RESULTS</span>
+              <span>暂无结果</span>
               <h3>当前筛选下没有事件</h3>
               <p>可以放宽状态、区域或时间范围，再重新查看。</p>
               <button
@@ -378,8 +389,8 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
                     </div>
                     <div className="review-identity">
                       <h3>{getCaseTitle(item)}</h3>
-                      <p><span>{item.zone_name}</span><span>{PPE_LABELS[item.ppe_type]}</span></p>
-                      <code>{item.case_id.toUpperCase()}</code>
+                      <p><span>{formatZoneName(item.zone_id, item.zone_name)}</span><span>{PPE_LABELS[item.ppe_type]}</span></p>
+                      <code title={item.case_id}>{formatCaseReference(item.case_id)}</code>
                     </div>
                     <div className="review-reason">
                       <span>{item.status === "CLOSED" ? "处理结果" : "需要人工处理"}</span>
@@ -450,7 +461,7 @@ function SummaryStat({
 }
 
 function getCaseTitle(item: CaseListItem): string {
-  return `${item.zone_name}作业人员未佩戴${PPE_LABELS[item.ppe_type]}`;
+  return `${formatZoneName(item.zone_id, item.zone_name)}人员未佩戴${PPE_LABELS[item.ppe_type]}`;
 }
 
 function formatOverdue(dueAt: string | null): string {

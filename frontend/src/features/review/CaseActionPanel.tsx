@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { ROLE_LABELS } from "../cases/format";
+import { ROLE_LABELS, STATUS_LABELS, TASK_OPTIONS } from "../cases/format";
 import type {
   CaseCommand,
   CaseDetailResponse,
@@ -34,7 +34,7 @@ export function CaseActionPanel({
   );
 
   if (!actor) {
-    return <ActionUnavailable text="角色目录尚未加载，当前不能提交人工命令。" />;
+    return <ActionUnavailable text="角色目录尚未加载，当前不能提交人工操作。" />;
   }
 
   if (actor.role === "SITE_SAFETY_OFFICER") {
@@ -86,7 +86,7 @@ export function CaseActionPanel({
 
   return (
     <ActionUnavailable
-      text={`${ROLE_LABELS[actor.role]}在“${snapshot.status}”状态下没有可执行命令。切换角色或等待流程进入下一节点。`}
+      text={`${ROLE_LABELS[actor.role]}在“${STATUS_LABELS[snapshot.status]}”阶段没有可执行操作。请切换角色或等待流程进入下一阶段。`}
     />
   );
 }
@@ -119,10 +119,13 @@ function FactsForm({
   return (
     <form className="action-form" onSubmit={handleSubmit}>
       <ActionHeading title="补充现场事实" actor={actor} />
-      <p className="action-form__hint">只提交现场可确认的信息；PPE 适用性仍由确定性 resolver 判断。</p>
+      <p className="action-form__hint">只提交现场可以确认的信息；防护装备是否适用仍由作业规则自动判断。</p>
       <label>
-        <span>任务代码</span>
-        <input value={taskCode} onChange={(event) => setTaskCode(event.target.value)} placeholder="例如 HOT_WORK_CUTTING" />
+        <span>作业类型（可选）</span>
+        <select value={taskCode} onChange={(event) => setTaskCode(event.target.value)}>
+          <option value="">请选择现场作业</option>
+          {TASK_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
       </label>
       <label>
         <span>现场补充说明</span>
@@ -182,7 +185,7 @@ function EvidenceForm({
           <fieldset className="evidence-draft" key={draft.draftId}>
             <legend>整改证据 {index + 1}</legend>
             <label>
-              <span>证据图片 URL</span>
+              <span>证据图片链接</span>
               <input required type="url" value={draft.imageUrl} onChange={(event) => updateEvidenceDraft(index, { imageUrl: event.target.value })} placeholder="https://…" />
             </label>
             <label>
@@ -300,7 +303,7 @@ function ReviewForm({
       </fieldset>
       {!applicable ? (
         <div className="action-guard">
-          当前调查未确认该 PPE 为任务必需项，因此不能批准整改。可退回调查或驳回事件。
+          当前调查未确认该防护装备为作业必需项，因此不能批准整改。可退回调查或驳回事件。
         </div>
       ) : null}
       {decision === "approve" ? (
@@ -377,7 +380,7 @@ function ActionHeading({ title, actor }: { title: string; actor: DemoUser }) {
   return (
     <div className="action-form__heading">
       <div>
-        <span>ACTION / 人工命令</span>
+        <span>人工操作</span>
         <h3>{title}</h3>
       </div>
       <small>
@@ -409,7 +412,7 @@ function ReasonField({
 function ActionUnavailable({ text }: { text: string }) {
   return (
     <div className="action-unavailable">
-      <span>CURRENT ROLE</span>
+      <span>当前角色</span>
       <h3>当前没有可执行操作</h3>
       <p>{text}</p>
     </div>

@@ -77,7 +77,7 @@ def test_party_tool_filters_by_zone_with_real_context() -> None:
         EligibleResponsiblePartiesInput(zone_id="zone-03")
     )
 
-    assert [party.party_id for party in output.parties] == ["team-structure-01"]
+    assert [party.party_id for party in output.parties] == ["team-carpentry-01"]
     assert all(party.zone_id == "zone-03" for party in output.parties)
 
 

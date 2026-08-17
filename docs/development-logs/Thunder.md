@@ -381,3 +381,162 @@
 ### 后续计划
 
 * 推送审查修正后的 `feat/case-pipeline`，交由项目负责人进行集成验收。
+
+## 2026-08-16
+
+### 当日目标
+
+* 将案例 API 与分析流程接入 SQLAlchemy 仓储，保证分析会话先于案例持久化并支持进程内仓储重建后读取。
+* 接入 5 个 RAG 权威来源的抽取语料与复核签核，并修复真实嵌入端点批量限制，使需求检索可返回权威引用。
+
+### 开发记录
+
+* 00:48 `fix(store): 接入SQL案例仓储运行时`
+  * 完成：运行时案例仓储由内存实现切换为 `SqlAlchemyCaseStore`，正式启动不再预载案例夹具；分析任务启动前先持久化 `analysis_sessions`，消除案例外键失败。
+  * 实现：新增数据库 URL 与 SQL 回显配置、FastAPI 数据库启动和释放生命周期、分析会话 SQL 保存适配器；保留站点上下文种子，并将案例 API 的 demo 数据改为显式测试依赖。
+  * 验证：`cd backend && /home/thunder/workspace/Innovative\ Integrated\ Application\ Training/backend/.venv/bin/python -m pytest`，339 项通过、1 项跳过；`cd frontend && npm run build`，失败，当前 `node_modules` 缺少已声明的 `vitest` 与 `@testing-library/react` 等开发依赖；`git diff --check`，通过；后端未配置 lint 和类型检查，前端未配置 lint。
+
+* 20:16 `fix(rag): 分批嵌入兼容单次请求上限`
+  * 完成：OpenAI 兼容嵌入端点按批次发送文本，规避 DashScope 单次请求 input 不超过 20 条的 400 报错，使真实向量索引可正常构建。
+  * 实现：`OpenAIEmbeddingClient.embed_documents` 按每批 20 条循环请求并拼接向量，复用懒加载 SDK 与维度回填逻辑。
+  * 验证：`cd backend && .venv/bin/python scripts/check_rag_topk.py`，五类 PPE 查询返回真实权威引用；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 20:22 `chore(rag): 权威来源清单接入抽取元数据与复核签核`
+  * 完成：5 个权威来源清单接入抽取元数据并将 extraction_status 置为 ready、human_review_status 置为 reviewed，使 RAG 真实索引可读取完整语料。
+  * 实现：补充 5 个来源的 local_path、parser_version 与 derived_text_sha256；GB 39800.1 文本经 OCR 与人工复核校正后重建。
+  * 验证：`cd backend && .venv/bin/python scripts/check_rag_topk.py`，五类 PPE 查询命中正确条款；`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，见问题与处理）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 20:48 `refactor(config): 站点上下文与用户目录改为配置驱动`
+  * 完成：站点上下文与用户目录的演示数据全部迁入 JSON 配置，替换代码硬编码；视频路径、时长、场景时间、作业票时间窗与用户列表改为可配置。
+  * 实现：新增 `users.json` 并让 `DemoUserDirectory` 从配置加载；扩展 `scene_assignments.json` 与 `_SceneAssignment`/`_SceneAssignments` 模型，`MemorySiteContext` 从配置读取视频与作业票字段；`fixture_candidates` 自持场景起始时间常量。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，335 项通过、5 项失败（环境原因，与本次无关）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 21:09 `fix(demo): 假分析分阶段延时避免前端错过完成事件`
+  * 完成：修复点击「开始分析」后前端卡在「分析中」的问题；fixture 假分析由约 10ms 改为分阶段约 3 秒，使前端 WebSocket 在 SESSION_FINISHED 之前完成订阅。
+  * 实现：`InMemoryVideoAnalysis.run_session` 在 STARTING/READING/INFERENCING 阶段间增加 `asyncio.sleep`，进度可视化且规避 EventHub live-only 不重放导致的竞态。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/domain/test_video_analysis.py tests/services/test_session_manager_sql_persistence.py tests/services/test_case_pipeline.py`，13 项通过；实测 POST 会话到生成案例耗时 3.3s；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 23:29 `feat(investigation): 案件流水线接入真实调查 agent`
+  * 完成：案件流水线 `get_case_pipeline` 改用真实调查端口，运行时调查走真实 DeepSeek agent 与真实 RAG 检索，不再使用 fixture 调查。
+  * 实现：`build_fixture_case_pipeline` 增加 `investigation` 注入参数，`get_case_pipeline` 传入 `get_investigation_port()`；补充 `requirements-ai.txt` 作为 AI 依赖安装入口（版本仍 single-source 在 pyproject.toml）。
+  * 验证：运行时实测 `get_investigation_agent` 返回 `InvestigationAgent`、`get_case_pipeline()._investigation` 为 `InvestigationService`；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+* 23:34 `test(investigation): 离线调查测试隔离与断言更新`
+  * 完成：新增 conftest.py 强制测试走离线/确定性适配器，避免真实 DeepSeek/embedding 调用；更新受接线影响的两个断言。
+  * 实现：conftest.py 置空 DEEPSEEK/EMBEDDING/VLM 相关 key；`test_analysis_sessions` 与 `test_end_to_end` 的 PENDING_REVIEW 断言改为 NEEDS_HUMAN_FACTS（测试环境离线 RAG 引用为空）。
+  * 验证：`cd backend && .venv/bin/python -m pytest`，334 项通过、5 项失败（均为环境原因：.env 密钥、chromadb、AGENT_LLM_MODEL=deepseek-v4-pro，非本次回归）；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+
+### 问题与处理
+
+* 原案例 API 测试隐式依赖运行时预载 demo 案例；改为通过依赖覆盖显式注入内存仓储与对应流水线，避免测试夹具进入正式数据库。
+* 前端构建失败与本次纯后端接线无关，未修改前端依赖或源码。
+* 真实索引构建暴露三个环境问题：DashScope embedding 单次请求 input 上限 20 条，已分批修复；venv 缺少 `openai`、`chromadb`、`socksio`，已安装；后端 pytest 的 5 个失败均为环境原因——`.env` 含真实 VLM/Agent/Embedding 密钥导致配置默认值测试失败，安装 chromadb 后 `test_chroma_lazy` 的「依赖未安装」前提不再成立，均非本次改动回归。
+
+### 后续计划
+
+* 推送 `fix/case-store-runtime-wiring` 任务分支，交由项目负责人在 `dev` 集成验收。
+* 推送 `chore/rag-authoritative-index` 任务分支，交由项目负责人在 `dev` 集成验收。
+* 推送 `chore/site-context-config-driven` 任务分支，交由项目负责人在 `dev` 集成验收。
+
+## 2026-08-17
+
+### 当日目标
+
+* 将实时视频推理接入后端分析会话，并确保停止会话能够结束正在运行的视频读取和推理。
+* 按现有视频素材重编固定六路演示场景，并保持现有前端结构、接口和单 PPE 案件模型不变。
+* 提供项目级 README，使新环境能够完成依赖安装、六路配置、服务启动和案件闭环演示。
+* 接入真实 OpenAI 兼容多模态复核，使 YOLO 证据帧能够经 Qwen 严格复核后进入案件流水线。
+* 补齐 Ultralytics 目标跟踪运行依赖，确保真实 YOLO 视频分析可以启动。
+* 修复前端关键证据帧代理，使案件详情能够显示后端生成的证据图片。
+* 将前端直接暴露的内部字段、枚举和演示素材名称转换为面向演示的中文表述。
+
+### 开发记录
+
+* 14:23 `fix(ml): 支持视频推理协作停止`
+  * 完成：为视频推理迭代器增加外部停止信号，使停止分析会话后不再继续读取后续视频帧。
+  * 实现：在每轮读取源视频前检查调用方提供的停止回调，并继续由原有清理路径关闭后台推理线程和视频捕获句柄。
+  * 验证：`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项测试通过；ML 全局 lint 和构建命令未配置，未运行。本切片未修改后端和前端，未运行后端完整测试和前端构建。
+* 14:24 `docs(log): 更正视觉接线任务负责人`
+  * 完成：将本任务开发记录从误写的成员日志移至任务负责人 Thunder 的日志。
+  * 实现：删除 Wuweizhe 日志中本任务新增区块，并在 Thunder 日志保留真实提交与验证记录。
+  * 验证：`git diff --check`，通过；本提交仅更正日志归属，未运行代码测试。
+* 14:48 `feat(video-analysis): 接入真实视觉分析会话`
+  * 完成：真实模式下由一次 YOLO 与 ByteTrack 视频推理同时驱动 MJPEG 标注流、PPE 候选聚合、案件流水线和实时事件；停止会话会等待推理线程释放。
+  * 实现：增加配置驱动的真实/fixture 适配器选择、会话级候选聚合器、证据 JPEG 持久化与读取接口、模型权重哈希追踪，并将视觉处理异常映射为可重试的 `SESSION_FAILED`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/video_analysis tests/services/test_session_manager.py tests/api/test_evidence_api.py tests/modules/investigation/test_config.py -q`，63 项测试通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
+* 15:19 `test(rag): 隔离Chroma可选依赖测试`
+  * 完成：消除 Chroma 懒加载测试对本机是否安装 `chromadb` 的隐式依赖，使缺失可选依赖的错误路径可稳定复现。
+  * 实现：通过测试级导入替身显式触发 `ImportError`，继续断言适配器仅在实际连接时抛出 `ChromaDependencyUnavailable`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/requirements_rag/test_chroma_lazy.py -q`，4 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest`，346 项通过、1 项真实 RAG 跳过；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`cd frontend && npm test`，42 项通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端与前端未配置 lint，未运行。
+* 16:11 `feat(demo): 按现有视频重编六路演示场景`
+  * 完成：将演示固定为安全切割、无背心切割、无手套装订木板、无背心无手套攀爬、三类 PPE 均缺失的木料组装、多人混合穿戴六路；各路候选数固定为 0、1、1、2、3、7。
+  * 实现：重配视频、区域、任务和 PPE 规则；夹具分析支持同一路视频生成多个工人和多项 PPE 候选，同一工人的候选共享人员轨迹，现有六路前端、API、数据库结构和单 PPE 案件模型保持不变。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/adapters/database/test_seed.py tests/api/test_demo_api.py tests/api/test_analysis_sessions.py tests/api/test_cases_api.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py tests/domain/test_resolver.py tests/integration/test_end_to_end.py tests/modules/investigation/test_agent.py tests/modules/investigation/test_config.py tests/modules/investigation/test_fake.py tests/modules/investigation/test_service.py tests/modules/investigation/test_tools.py tests/services/test_session_manager_sql_persistence.py -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent' --tb=short`，138 项通过、2 项因本地环境配置排除；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -k 'not test_agent_settings_defaults and not test_deepseek_key_selects_real_investigation_agent and not test_rag_configuration_is_separate_from_vlm_configuration and not test_defaults_are_used_without_vlm_env'`，342 项通过、1 项跳过、4 项因本地环境配置排除；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests/modules/investigation/test_config.py::test_agent_settings_defaults backend/tests/modules/investigation/test_config.py::test_deepseek_key_selects_real_investigation_agent backend/tests/modules/requirements_rag/test_rag_config.py::test_rag_configuration_is_separate_from_vlm_configuration backend/tests/modules/vlm_review/test_config.py::test_defaults_are_used_without_vlm_env -q`，4 项通过；合计完整后端回归 346 项通过、1 项跳过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`cd frontend && npm run build`，通过；`git diff --check`，通过。后端未配置 lint 和类型检查，未运行。
+
+* 16:29 `docs(readme): 补充项目安装与闭环演示说明`
+  * 完成：新增项目级 README，覆盖六路场景、依赖安装、视频与模型准备、稳定演示和 CPU YOLO 配置、真实 RAG、前后端启动及人工闭环步骤。
+  * 实现：以 `pyproject.toml` 的 `ai`、`vision`、`dev` 可选依赖为统一安装入口；明确真实索引查询仍需 Embedding API、媒体和权重不进入 Git，以及 fixture 与真实 YOLO 的结果边界。
+  * 验证：`git diff --check`，通过；逐项检查 README 引用的仓库文件路径，均存在。项目未配置 Markdown lint；本提交仅修改文档，未运行代码测试、静态检查和构建。
+
+* 17:28 `feat(vlm): 接入真实多模态复核`
+  * 完成：新增 OpenAI 兼容多模态 VLM 适配器，并让案件流水线按 `VLM_PROVIDER` 在固定复核与真实复核之间选择；本地演示环境已启用 CPU YOLO 与 Qwen3.6。
+  * 实现：仅允许读取证据根目录内的 JPEG，将证据帧按最大边限制缩放压缩后编码为 Base64；请求关闭 Qwen 思考模式并要求 JSON 对象，响应继续由现有严格解析器校验；密钥只从环境变量读取，错误按是否可重试分类。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/modules/video_analysis/test_runtime.py tests/services/test_case_pipeline.py -q`，48 项通过；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/api/test_analysis_sessions.py -q`，9 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-build`，构建成功；真实 Qwen3.6 图片调用返回并通过严格解析，CPU YOLO 使用 `best.pt` 单帧推理成功；`git diff --check`，通过。后端未配置 lint 和类型检查，未运行前端构建。
+
+* 18:08 `fix(vision): 补充目标跟踪依赖`
+  * 完成：修复真实 YOLO 视频分析启动时报 `No module named 'lap'`，并将缺失依赖纳入视觉环境安装清单。
+  * 实现：为 `vision` 可选依赖显式加入 Ultralytics ByteTrack 所需的 `lap>=0.5.12,<1`，本地后端虚拟环境安装 `lap 0.5.13`。
+  * 验证：`backend/.venv/bin/python -c "import lap; print(lap.__version__)"`，输出 0.5.13；真实 `YOLO.track()` 使用 `best.pt` 与演示视频单帧运行成功并识别 3 个目标；`backend/.venv/bin/python -m pytest ml/tests/test_video_inference.py -q`，19 项通过；`pip3 --python backend/.venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-lap-build`，构建成功；未运行三百余项全量后端测试，原因是本次仅补充跟踪运行依赖并已完成针对性真实推理验证；后端未配置 lint 和类型检查，未运行。
+
+* 18:16 `fix(frontend): 修复关键证据帧代理`
+  * 完成：修复案件详情中全部关键证据帧无法显示的问题，前端开发服务器现在会将 `/evidence` 图片请求转发到后端。
+  * 实现：Vite 增加 `/evidence` 代理；开发、测试和构建脚本显式指定 `vite.config.ts`，避免被本地遗留且已忽略的 `vite.config.js` 覆盖；新增代理配置回归测试。
+  * 验证：`cd frontend && npm test`，43 项通过；`cd frontend && npm run build`，构建成功；临时启动修复后的前端后请求真实证据地址，返回 `200 image/jpeg`、395167 字节；项目未配置独立 lint，未运行。
+
+* 18:53 `fix(frontend): 增加中文展示映射`
+  * 完成：建立面向演示的统一中文展示词汇，将作业代码、调查字段、冲突原因、工具名称、模型结论及六路素材派生名称转换为可读文案。
+  * 实现：集中维护任务、机位、区域、视频场景、调查字段、规则冲突、调查工具、VLM 结论和模型来源的格式化函数；未知内部值使用保守的通用文案，不直接暴露字段名。
+  * 验证：`cd frontend && npm test -- src/features/cases/format.test.ts`，4 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 19:04 `fix(frontend): 接入演示友好文案`
+  * 完成：监控台、案件中心、案件详情和人工操作区域不再直接展示后端字段、枚举、模型标识、责任主体 ID 或演示视频文件派生名称。
+  * 实现：六路机位与区域统一显示业务名称；案件状态、作业、调查事实、冲突、工具、模型结论及时间线均转换为中文表述；事实补充改为中文作业下拉框，完整案件 ID 仅保留为辅助标题信息。
+  * 验证：`cd frontend && npm test`，12 个测试文件共 49 项通过；`cd frontend && npm run build`，构建成功；`node /home/thunder/.agents/skills/impeccable/scripts/detect.mjs --json frontend/src/features/cases/format.ts frontend/src/features/cases/CaseCenterPage.tsx frontend/src/features/cases/CasesWorkspace.tsx frontend/src/features/monitor/ChannelCard.tsx frontend/src/features/review/CaseActionPanel.tsx frontend/src/features/review/CaseDetailPage.tsx`，未发现问题；项目未配置独立 lint，未运行。
+* 20:16 `fix(vlm): 阻止语义矛盾复核入库`
+  * 完成：修复“理由确认未佩戴防护装备，但结论却排除违规”的语义矛盾；矛盾结果不会进入案件状态机，重试耗尽时保持候选待复核状态。
+  * 实现：统一 `CONFIRMED`、`REJECTED`、`UNCERTAIN` 的违规语义、人员关联含义、证据充分性和理由前缀；真实模型提示明确人员框不是防护装备框；解析层校验结论、关联、证据标记与理由一致性，并在重试提示中反馈具体语义错误；固定适配器同步将证据不足归为 `UNCERTAIN`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/services/test_case_pipeline.py tests/modules/video_analysis/test_runtime.py -q`，54 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-semantics-build`，构建成功；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/api/test_analysis_sessions.py tests/integration/test_end_to_end.py -q` 输出 10 个通过标记但未返回最终汇总和退出码，未计为通过；后端未配置独立 lint 和类型检查，未运行。
+* 20:26 `fix(vlm): 校验复核理由语义方向`
+  * 完成：阻止模型通过正确结论前缀包装相反理由正文；“排除违规”不能再描述未佩戴、裸露或装备缺失，“确认违规”不能描述装备已经佩戴。
+  * 实现：为三类结论规定可机器校验的理由开头，继续保留后续中文说明；解析层检查理由正文的装备缺失与佩戴方向，真实提示禁止双重否定并要求正文不得反转开头结论；固定适配器同步输出相同格式。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/vlm_review tests/services/test_case_pipeline.py tests/modules/video_analysis/test_runtime.py -q`，57 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-reason-semantics-build`，构建成功；真实 CAM-04 复核返回 `CONFIRMED`、`MATCHED`、证据充分及“确认违规：目标装备缺失；”，未再产生反向结论；后端未配置独立 lint 和类型检查，未运行。
+* 20:52 `fix(agent): 强制DeepSeek结构化输出`
+  * 完成：调查 Agent 按 DeepSeek 官方 JSON Output 要求返回严格 JSON，非 JSON 最终回答会携带固定结构自动纠正后重试。
+  * 实现：DeepSeek 请求启用 `response_format=json_object`、1024 Token 输出上限和显式 strict 工具定义；调查提示包含完整 JSON 字段示例，解析失败最多自动纠正两次。
+  * 验证：`backend/.venv/bin/python -m pytest backend/tests/modules/investigation backend/tests/services/test_case_pipeline.py -q`，72 项通过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`pip --python backend/.venv/bin/python check`，无损坏依赖；`backend/.venv/bin/python -m build backend --wheel --no-isolation --outdir /tmp/siteppe-agent-json-build`，构建成功；真实 DeepSeek 合成调查完成责任人与 RAG 工具调用，并返回可解析的建议、整改责任人、期限和法规引用；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 20:58 `fix(agent): 防止调查异常遗留中间状态`
+  * 完成：DeepSeek 请求、输出或工具调用失败时，案件不再停留于假的“调查中”，分析会话会明确返回可重试失败。
+  * 实现：首次调查改为 Agent 成功后再连续写入启动与结果迁移；DeepSeek 传输异常统一转换为调查域错误，会话管理器发布 `INVESTIGATION_PROCESSING_FAILED`。已处于旧 `INVESTIGATING` 状态的案件仍可通过原候选证据恢复调查。
+  * 验证：`backend/.venv/bin/python -m pytest backend/tests/modules/investigation backend/tests/services/test_case_pipeline.py backend/tests/services/test_session_manager.py backend/tests/modules/video_analysis/test_video_analysis.py -q`，86 项通过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`pip --python backend/.venv/bin/python check`，无损坏依赖；`backend/.venv/bin/python -m build backend --wheel --no-isolation --outdir /tmp/siteppe-agent-failure-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+
+### 问题与处理
+
+* 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
+* 当前后端虚拟环境的 `asyncio` 默认线程池即使执行空函数也无法退出；真实视觉适配器改用会话受控线程并通过停止回归测试，避免会话和测试进程被默认线程池阻塞。
+* 当前虚拟环境自动加载第三方 pytest 插件后会使分析会话集成测试中的 AnyIO 工作线程挂起；禁用非项目所需插件后完整回归通过。原 Chroma 测试还错误假设可选依赖未安装，已改为显式模拟缺失依赖。
+* 本地 `backend/.env` 会覆盖默认配置并干扰 4 项配置测试；在仓库根目录隔离该环境后补跑，4 项均通过，未修改或提交本地环境文件。
+* 前端首次构建因本地缺少已声明的开发依赖失败；执行 `cd frontend && npm ci --include=dev` 后构建通过。安装过程报告 3 个 high 级依赖审计问题，本切片未执行可能改变依赖版本的自动修复。
+* 此前当前机器没有 `/data/demo`；用户完成演示视频放置与目录链接后，已使用其中视频执行真实 YOLO 单帧推理和跟踪验证。
+* 后端虚拟环境缺少内置 `pip` 与 `ensurepip`；改用系统 `pip3 --python .venv/bin/python` 安装声明依赖，并先从 PyTorch 官方 CPU 源安装 CPU 版本，避免下载无用的 CUDA 组件。依赖检查无损坏项。
+* Python SDK 首次受沙箱代理权限限制而超时；用户明确同意发送本地演示证据帧后，以获准网络权限完成真实调用。本地 `.env` 启用真实 YOLO 后曾使离线 MJPEG 测试误走真实推理；测试会话显式固定 `VISION_PROVIDER=fixture` 后 9 项 API 测试全部通过。
+* Ultralytics 的基础依赖不包含 ByteTrack 所需的 `lap`，真实视频分析首次调用 `model.track()` 时触发模块缺失；已安装依赖并在项目 `vision` 可选依赖中显式声明，避免新环境再次遗漏。
+* 前端目录遗留的忽略文件 `vite.config.js` 被 Vite 优先加载，且其中没有 `/evidence` 代理，导致图片请求返回前端 HTML；各脚本已显式指定 TypeScript 配置并补充证据代理，真实请求验证通过。
+* 分析接口与端到端测试完成 10 个用例后未正常退出，未获得可核验的 pytest 汇总与退出码；本次以 VLM、案件流水线和视觉运行时 54 项明确通过的针对性测试作为提交门禁，不声称该组合测试通过。
+* 首次真实复跑误连到 18:10 启动且未热更新的宿主旧后端，产生 8 个旧语义案件；停止旧进程并精确清理该会话后，改为仅监听 `127.0.0.1` 的当前代码完成复验。第一层修复仍允许模型用正确前缀包装相反正文，已由第二层理由方向校验阻断。复验停止时真实调查 Agent 另有一次非 JSON 输出错误，本次未扩展到调查模块。
+* DeepSeek JSON 模式与工具调用组合时，LangChain 不会为已是 OpenAI 格式的工具字典自动补入 `strict: true`；适配器改为显式标记每个函数工具后，真实调用通过。虚拟环境缺少内置 `pip`，依赖检查改用系统 `pip --python backend/.venv/bin/python check` 完成。
+* 本地数据库存在 3 个旧 `INVESTIGATING` 案件，已备份至 `/tmp/siteppe-before-agent-recovery-20260817-205600.db`；恢复操作需将这 3 个具体案件的作业、风险与 PPE 上下文发送给 DeepSeek，当前受数据外发授权拦截，未写回数据库。
+
+### 后续计划
+
+* 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。
+* 在演示环境将六个约定视频挂载到 `/data/demo` 后，执行六路播放与案件数量冒烟验收。
+* 启动前后端，用真实 CPU YOLO、Qwen VLM、RAG 与调查 Agent 执行一次案件人工整改闭环演示。

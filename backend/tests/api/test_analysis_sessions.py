@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
@@ -9,8 +10,23 @@ from app.api.deps import (
     get_inmemory_video_analysis,
     get_session_manager,
     get_investigation_port,
+    shutdown_database_runtime,
 )
+from app.config import get_settings
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    shutdown_database_runtime()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"sqlite:///{tmp_path / 'analysis-sessions.db'}",
+    )
+    get_settings.cache_clear()
+    yield
+    shutdown_database_runtime()
+    get_settings.cache_clear()
 
 
 def setup_function() -> None:
@@ -33,7 +49,7 @@ async def request(method: str, path: str, json: dict | None = None):
 def test_start_and_idempotent_stop_return_session_transport_urls() -> None:
     async def scenario():
         start = await request(
-            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-safe-01"}
         )
         session_id = start.json()["session_id"]
         first = await request(
@@ -51,7 +67,7 @@ def test_start_and_idempotent_stop_return_session_transport_urls() -> None:
     session_id = body["session_id"]
     assert body == {
         "session_id": session_id,
-        "video_id": "video-02",
+        "video_id": "video-safe-01",
         "stage": "STARTING",
         "stream_url": f"/api/v1/analysis-sessions/{session_id}/stream.mjpg",
         "events_url": f"/ws/v1/analysis-sessions/{session_id}/events",
@@ -68,7 +84,7 @@ def test_start_request_rejects_extra_fields() -> None:
         request(
             "POST",
             "/api/v1/analysis-sessions",
-            {"video_id": "video-02", "local_path": "/private/demo.mp4"},
+            {"video_id": "video-safe-01", "local_path": "/private/demo.mp4"},
         )
     )
 
@@ -109,7 +125,7 @@ def test_unknown_video_and_session_return_stable_error_responses() -> None:
 def test_mjpeg_endpoint_has_a_finite_multipart_jpeg_without_private_paths() -> None:
     async def scenario():
         start = await request(
-            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-safe-01"}
         )
         stream = await request("GET", start.json()["stream_url"])
         return stream
@@ -140,7 +156,7 @@ def test_unknown_mjpeg_session_returns_error_response_instead_of_a_stream() -> N
 def test_stopped_session_mjpeg_returns_conflict_instead_of_a_stream() -> None:
     async def scenario():
         start = await request(
-            "POST", "/api/v1/analysis-sessions", {"video_id": "video-01"}
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-safe-01"}
         )
         session_id = start.json()["session_id"]
         await request("POST", f"/api/v1/analysis-sessions/{session_id}/stop")
@@ -157,7 +173,7 @@ def test_stopped_session_mjpeg_returns_conflict_instead_of_a_stream() -> None:
 def test_finished_fake_session_stream_remains_available_until_stop() -> None:
     async def scenario():
         start = await request(
-            "POST", "/api/v1/analysis-sessions", {"video_id": "video-01"}
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-safe-01"}
         )
         session_id = start.json()["session_id"]
         events = get_session_manager().subscribe_events(session_id)
@@ -179,7 +195,7 @@ def test_finished_fake_session_stream_remains_available_until_stop() -> None:
 def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
     async def scenario():
         start = await request(
-            "POST", "/api/v1/analysis-sessions", {"video_id": "video-02"}
+            "POST", "/api/v1/analysis-sessions", {"video_id": "video-no-vest-02"}
         )
         session_id = start.json()["session_id"]
         events = get_session_manager().subscribe_events(session_id)
@@ -193,6 +209,7 @@ def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
         created = next(
             event for event in received if event.event_type.value == "CANDIDATE_CREATED"
         )
+        get_case_store.cache_clear()
         detail = await request("GET", f"/api/v1/cases/{created.case_id}")
         return created, received, detail
 
@@ -214,7 +231,7 @@ def test_rest_can_query_the_case_announced_by_the_finished_session() -> None:
     assert received[4].payload.version == 2
     assert [event.payload.status for event in received[5:7]] == [
         "INVESTIGATING",
-        "PENDING_REVIEW",
+        "NEEDS_HUMAN_FACTS",
     ]
     assert [event.payload.version for event in received[5:7]] == [3, 4]
     assert (finished.payload.candidate_count, finished.payload.case_count) == (1, 1)

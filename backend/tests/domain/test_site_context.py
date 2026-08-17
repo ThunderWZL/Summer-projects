@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -42,12 +43,12 @@ def test_unknown_camera_has_no_zone() -> None:
     assert context.get_zone_at("CAM-99") is None
 
 
-def test_cam_01_zone_has_no_active_permit() -> None:
+def test_cam_01_zone_has_material_cutting_permit() -> None:
     context = make_context()
 
     permits = context.find_active_work_permits("zone-01", SCENARIO_TIME)
 
-    assert permits == []
+    assert [permit.task_code for permit in permits] == ["MATERIAL_CUTTING"]
 
 
 def test_permit_is_found_only_within_its_window() -> None:
@@ -64,29 +65,35 @@ def test_permit_is_found_only_within_its_window() -> None:
     assert outside == []
 
 
-def test_cam_04_and_cam_03_gloves_matrix_differ() -> None:
+def test_operational_tasks_require_the_three_available_ppe_types() -> None:
     context = make_context()
 
-    rebar = context.get_task_ppe_matrix("HANDLING_REBAR")
-    rotating = context.get_task_ppe_matrix("ROTATING_EQUIPMENT_OPERATION")
-
-    assert rebar is not None
-    assert rotating is not None
-    assert PpeType.GLOVES in rebar.required_ppe
-    assert PpeType.GLOVES not in rotating.required_ppe
-    assert rotating.exception_note
-    assert isinstance(rebar, TaskPpeMatrix)
+    for task_code in (
+        "MATERIAL_CUTTING",
+        "BOARD_FASTENING",
+        "CLIMBING_WORK",
+        "TIMBER_ASSEMBLY",
+        "GENERAL_SITE_ACTIVITY",
+    ):
+        matrix = context.get_task_ppe_matrix(task_code)
+        assert isinstance(matrix, TaskPpeMatrix)
+        assert set(matrix.required_ppe) == {
+            PpeType.HELMET,
+            PpeType.GLOVES,
+            PpeType.VEST,
+        }
 
 
 def test_matrix_uses_frozen_ppe_enum() -> None:
     context = make_context()
 
-    cutting = context.get_task_ppe_matrix("HOT_WORK_CUTTING")
+    cutting = context.get_task_ppe_matrix("MATERIAL_CUTTING")
 
     assert cutting is not None
     assert {ppe.value for ppe in cutting.required_ppe} == {
-        "goggles",
         "helmet",
+        "gloves",
+        "vest",
     }
 
 
@@ -102,32 +109,53 @@ def test_task_ppe_matrix_requires_positive_rectification_window(
 ) -> None:
     with pytest.raises(ValidationError):
         TaskPpeMatrix(
-            task_code="HANDLING_REBAR",
+            task_code="BOARD_FASTENING",
             hazards=["手部伤害风险"],
             required_ppe=[PpeType.GLOVES],
             rectification_window_minutes=minutes,
         )
 
 
-def test_list_videos_returns_six_channels() -> None:
+def test_default_video_inventory_matches_the_six_selected_clips() -> None:
     context = make_context()
 
     videos = context.list_videos()
 
-    assert [video.video_id for video in videos] == [
-        "video-01",
-        "video-02",
-        "video-03",
-        "video-04",
-        "video-05",
-        "video-06",
+    assert [
+        (video.video_id, video.title, Path(video.local_path).name)
+        for video in videos
+    ] == [
+        ("video-safe-01", "安全1｜切割物料｜防护齐全", "安全1.mp4"),
+        ("video-no-vest-02", "无背心2｜切割物料", "无背心2.mp4"),
+        ("video-no-gloves-01", "无手套1｜装订木板", "无手套1.mp4"),
+        (
+            "video-no-vest-gloves-02",
+            "无背心无手套2｜攀爬作业",
+            "无背心无手套2.mp4",
+        ),
+        (
+            "video-no-ppe",
+            "无头盔无手套无背心｜组装木料",
+            "无头盔无手套无背心.mp4",
+        ),
+        ("video-mixed-wearing", "符合｜多人混合穿戴", "符合.mp4"),
     ]
+
+    operational_ppe = {"helmet", "gloves", "vest"}
+    for video in videos:
+        zone = context.get_zone_at(video.camera_id)
+        assert zone is not None
+        permits = context.find_active_work_permits(zone.zone_id, SCENARIO_TIME)
+        assert len(permits) == 1
+        matrix = context.get_task_ppe_matrix(permits[0].task_code)
+        assert matrix is not None
+        assert {ppe.value for ppe in matrix.required_ppe} == operational_ppe
 
 
 def test_get_video_returns_its_camera_and_scenario_time() -> None:
     context = make_context()
 
-    video = context.get_video("video-01")
+    video = context.get_video("video-safe-01")
 
     assert video is not None
     assert video.camera_id == "CAM-01"
@@ -140,7 +168,7 @@ def test_responsible_parties_are_filtered_by_zone() -> None:
 
     parties = context.list_eligible_responsible_parties("zone-02")
 
-    assert [party.party_id for party in parties] == ["team-electric-01"]
+    assert [party.party_id for party in parties] == ["team-cutting-02"]
     assert parties[0].kind == "班组"
 
 

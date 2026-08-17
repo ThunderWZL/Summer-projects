@@ -8,6 +8,9 @@ from app.contracts import InvestigationResult
 class InvestigationError(RuntimeError):
     """Base error raised while producing an investigation result."""
 
+    code = "INVESTIGATION_PROCESSING_FAILED"
+    retryable = True
+
 
 class InvestigationCaseNotFound(InvestigationError):
     pass

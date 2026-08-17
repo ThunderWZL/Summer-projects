@@ -10,7 +10,7 @@ from app.contracts import (
     CaseUpdatedPayload,
     VlmReviewedPayload,
 )
-from app.domain.inmemory.fixture_candidates import candidate_for_video
+from app.domain.inmemory.fixture_candidates import candidates_for_video
 from app.domain.site_context import SiteContextPort
 from app.domain.video_analysis import AnalysisSession
 from app.services.session_manager import SessionManager
@@ -51,22 +51,26 @@ class InMemoryVideoAnalysis:
     async def run_session(
         self, session: AnalysisSession, manager: SessionManager
     ) -> None:
-        await asyncio.sleep(0.01)
         video = self._context.get_video(session.video_id)
         if video is None:
             return
+        # 分阶段停留，避免 fixture 分析过快导致前端 WebSocket 订阅尚未建立
+        # 就错过 SESSION_FINISHED（EventHub 为 live-only 不重放），同时让进度可见。
+        await asyncio.sleep(0.3)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.STARTING,
             progress=0.0,
             message="analysis session started",
         )
+        await asyncio.sleep(0.8)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.READING,
             progress=0.25,
             message="reading demo video",
         )
+        await asyncio.sleep(1.0)
         await manager.publish_progress(
             session.session_id,
             stage=AnalysisStage.INFERENCING,
@@ -74,9 +78,12 @@ class InMemoryVideoAnalysis:
             message="running deterministic demo inference",
             inference_fps=12.0,
         )
-        candidate = candidate_for_video(video, session.session_id)
-        if candidate is not None:
+        await asyncio.sleep(1.0)
+        candidates = candidates_for_video(video, session.session_id)
+        case_ids: set[str] = set()
+        for candidate in candidates:
             case = self._pipeline.ensure_case(candidate)
+            case_ids.add(case.case_id)
             is_new_candidate = (
                 case.status is CaseStatus.YOLO_CANDIDATE and not case.transitions
             )
@@ -118,9 +125,8 @@ class InMemoryVideoAnalysis:
                         ),
                         playback_ms=candidate.last_seen_ms,
                     )
-        case_count = 1 if candidate is not None else 0
         await manager.finish_session(
             session.session_id,
-            candidate_count=case_count,
-            case_count=case_count,
+            candidate_count=len(candidates),
+            case_count=len(case_ids),
         )

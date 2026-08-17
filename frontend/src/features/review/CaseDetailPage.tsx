@@ -2,10 +2,20 @@ import { useEffect, useState, type CSSProperties } from "react";
 
 import { CaseApiError, fetchCaseDetail, submitCaseCommand } from "../cases/api";
 import {
-  formatDateTime,
+  formatCameraName,
+  formatCaseReference,
   formatDuration,
-  formatJsonValue,
+  formatFieldLabel,
+  formatInvestigationItem,
+  formatInvestigationValue,
   formatLongDateTime,
+  formatModelLabel,
+  formatNarrative,
+  formatSceneTitle,
+  formatTaskLabel,
+  formatToolLabel,
+  formatVlmVerdict,
+  formatZoneName,
   FRAME_LABELS,
   PPE_LABELS,
   ROLE_LABELS,
@@ -57,7 +67,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
     setCommandNotice(null);
     try {
       await submitCaseCommand(caseId, command);
-      setCommandNotice({ tone: "success", text: "命令已提交，页面已按服务端最新状态刷新。" });
+      setCommandNotice({ tone: "success", text: "操作已提交，页面已刷新为最新状态。" });
       setReloadToken((value) => value + 1);
     } catch (reason) {
       if (reason instanceof CaseApiError && reason.code === "STALE_CASE_VERSION") {
@@ -66,7 +76,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
       } else {
         setCommandNotice({
           tone: "error",
-          text: reason instanceof CaseApiError ? reason.message : "命令提交失败，请稍后重试。",
+          text: reason instanceof CaseApiError ? reason.message : "操作提交失败，请稍后重试。",
         });
       }
     } finally {
@@ -81,7 +91,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
       <main className="case-detail case-detail--state">
         <button className="detail-back" type="button" onClick={onBack}>返回事件中心</button>
         <div className="detail-state" role="alert">
-          <span>DETAIL UNAVAILABLE</span>
+          <span>详情暂不可用</span>
           <h1>无法读取事件详情</h1>
           <p>{error ?? "事件不存在或上下文缺失。"}</p>
           <button type="button" onClick={() => setReloadToken((value) => value + 1)}>重新加载</button>
@@ -93,6 +103,9 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
   const snapshot = detail.snapshot;
   const duration = snapshot.candidate.last_seen_ms - snapshot.candidate.first_seen_ms;
   const applicable = snapshot.investigation?.required_ppe.includes(snapshot.ppe_type);
+  const cameraName = formatCameraName(snapshot.camera_id, detail.camera_name);
+  const zoneName = formatZoneName(detail.zone_id, detail.zone_name);
+  const sceneTitle = formatSceneTitle(detail.video_id, detail.video_title);
 
   return (
     <main className="case-detail" aria-labelledby="case-detail-title">
@@ -105,12 +118,12 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
 
       <header className="detail-hero">
         <div>
-          <p className="case-kicker">CASE FILE / 事件档案</p>
-          <h1 id="case-detail-title">{snapshot.case_id}</h1>
-          <p>{PPE_LABELS[snapshot.ppe_type]} · {detail.zone_name} · {detail.camera_name}</p>
+          <p className="case-kicker">安全事件档案</p>
+          <h1 id="case-detail-title">{zoneName}人员未佩戴{PPE_LABELS[snapshot.ppe_type]}</h1>
+          <p><span title={snapshot.case_id}>{formatCaseReference(snapshot.case_id)}</span> · {cameraName} · {sceneTitle}</p>
         </div>
         <div className="detail-status">
-          <span>当前状态 · V{snapshot.version}</span>
+          <span>当前状态 · 版本 {snapshot.version}</span>
           <strong>{STATUS_LABELS[snapshot.status]}</strong>
           <time dateTime={snapshot.updated_at}>更新于 {formatLongDateTime(snapshot.updated_at)}</time>
         </div>
@@ -129,7 +142,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
         <SectionHeading
           index="01"
           title="关键证据帧"
-          description={`${snapshot.candidate.model_name} · ${snapshot.candidate.aggregation_method} · 轨迹 ${snapshot.person_track_id}`}
+          description={`${snapshot.candidate.frames.length} 张连续证据 · 人员轨迹 ${snapshot.person_track_id}`}
           id="evidence-heading"
         />
         <div className="evidence-grid">
@@ -142,13 +155,13 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
       <div className="detail-layout">
         <div className="detail-flow">
           <section className="detail-section" aria-labelledby="vlm-heading">
-            <SectionHeading index="02" title="VLM 语义复核" description="关联、可见性与证据充分性均来自合法复核结果" id="vlm-heading" />
-            {snapshot.vlm_review ? <VlmPanel detail={detail} /> : <MissingBlock text="当前尚无 VLM 复核结果。技术失败不会伪装成语义结论。" />}
+            <SectionHeading index="02" title="AI 语义复核" description="综合核对人员关联、部位可见性和连续证据" id="vlm-heading" />
+            {snapshot.vlm_review ? <VlmPanel detail={detail} /> : <MissingBlock text="当前尚无语义复核结果。" />}
           </section>
 
           <section className="detail-section" aria-labelledby="investigation-heading">
-            <SectionHeading index="03" title="确定性调查与建议" description="任务、危害和 PPE 要求由 resolver 产生；Agent 只负责解释与建议" id="investigation-heading" />
-            {snapshot.investigation ? <InvestigationPanel detail={detail} /> : <MissingBlock text="当前事件尚未形成调查结果。" />}
+            <SectionHeading index="03" title="调查结论与建议" description="作业规则确定防护要求，智能调查负责汇总依据与处置建议" id="investigation-heading" />
+            {snapshot.investigation ? <InvestigationPanel detail={detail} context={context} /> : <MissingBlock text="当前事件尚未形成调查结果。" />}
           </section>
 
           <section className="detail-section" aria-labelledby="citation-heading">
@@ -171,7 +184,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
           </section>
 
           <section className="detail-section" aria-labelledby="submission-heading">
-            <SectionHeading index="05" title="人工提交历史" description="事实与整改证据按提交时间保留，不暴露任意数据库载荷" id="submission-heading" />
+            <SectionHeading index="05" title="人工提交历史" description="按时间保留现场事实、操作理由和整改证据" id="submission-heading" />
             {detail.human_submissions.length ? (
               <div className="submission-list">
                 {detail.human_submissions.map((submission) => (
@@ -203,7 +216,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
           </section>
 
           <section className="detail-section" aria-labelledby="timeline-heading">
-            <SectionHeading index="06" title="统一时间线" description="系统迁移的操作人为空；人工动作保留真实角色和理由" id="timeline-heading" />
+            <SectionHeading index="06" title="处理时间线" description="记录自动分析与人工处理的关键节点" id="timeline-heading" />
             <ol className="case-timeline">
               {detail.timeline.map((item) => (
                 <li key={item.timeline_item_id} className={`timeline--${item.source.toLowerCase()}`}>
@@ -214,8 +227,8 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
                       <time dateTime={item.occurred_at}>{formatLongDateTime(item.occurred_at)}</time>
                     </header>
                     <h3>{STATUS_LABELS[item.to_status]}</h3>
-                    <p>{item.reason ?? "系统自动记录"}</p>
-                    <small>{item.actor_name ? `${item.actor_name} · ${item.actor_role ? ROLE_LABELS[item.actor_role] : ""}` : "系统操作 · actor null"}</small>
+                    <p>{item.reason ? formatNarrative(item.reason) : "系统自动记录"}</p>
+                    <small>{item.actor_name ? `${item.actor_name}${item.actor_role ? ` · ${ROLE_LABELS[item.actor_role]}` : ""}` : "系统自动处理"}</small>
                   </div>
                 </li>
               ))}
@@ -227,8 +240,8 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
           {commandNotice ? <div className={`command-notice command-notice--${commandNotice.tone}`} role="status">{commandNotice.text}</div> : null}
           <CaseActionPanel detail={detail} actor={actor} context={context} submitting={submitting} onSubmit={handleCommand} />
           <div className="detail-integrity-note">
-            <span>INTEGRITY</span>
-            <p>REST 是唯一事实来源。成功后刷新快照；版本冲突不会自动覆盖。</p>
+            <span>数据保护</span>
+            <p>操作成功后会重新加载最新案件；如果案件已被他人更新，系统不会覆盖对方结果。</p>
           </div>
         </aside>
       </div>
@@ -301,35 +314,38 @@ function VlmPanel({ detail }: { detail: CaseDetailResponse }) {
   ] as const;
   return (
     <div className="vlm-panel">
-      <div className="vlm-verdict"><span>复核结论</span><strong className={`verdict--${review.verdict.toLowerCase()}`}>{review.verdict}</strong><small>{review.model_provider} / {review.model_name}</small></div>
+      <div className="vlm-verdict"><span>复核结论</span><strong className={`verdict--${review.verdict.toLowerCase()}`}>{formatVlmVerdict(review.verdict)}</strong><small>{formatModelLabel(review.model_provider, review.model_name)}</small></div>
       <div className="vlm-checks">{checks.map(([label, pass, value]) => <div key={label} className={pass ? "is-pass" : "is-fail"}><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <blockquote>{review.reason}</blockquote>
+      <blockquote>{formatNarrative(review.reason)}</blockquote>
     </div>
   );
 }
 
-function InvestigationPanel({ detail }: { detail: CaseDetailResponse }) {
+function InvestigationPanel({ detail, context }: { detail: CaseDetailResponse; context: DemoContext | null }) {
   const investigation = detail.snapshot.investigation!;
+  const recommendedParty = context?.responsible_parties.find(
+    (party) => party.party_id === investigation.rectification_recommendation?.responsible_party_id,
+  );
   return (
     <div className="investigation-panel">
       <div className="investigation-resolver">
-        <div><span>适用任务</span><strong>{investigation.applicable_task ?? "未唯一解析"}</strong></div>
+        <div><span>适用作业</span><strong>{formatTaskLabel(investigation.applicable_task)}</strong></div>
         <div><span>已识别危害</span><TagList values={investigation.hazards} empty="无" /></div>
-        <div><span>任务要求 PPE</span><TagList values={investigation.required_ppe.map((ppe) => PPE_LABELS[ppe])} empty="无额外要求" accent /></div>
-        <div><span>待补字段</span><TagList values={investigation.missing_fields} empty="无" /></div>
-        <div><span>事实冲突</span><TagList values={investigation.conflicts} empty="无" danger={Boolean(investigation.conflicts.length)} /></div>
+        <div><span>作业所需防护装备</span><TagList values={investigation.required_ppe.map((ppe) => PPE_LABELS[ppe])} empty="无额外要求" accent /></div>
+        <div><span>待补信息</span><TagList values={investigation.missing_fields.map(formatInvestigationItem)} empty="无" /></div>
+        <div><span>信息冲突</span><TagList values={investigation.conflicts.map(formatInvestigationItem)} empty="无" danger={Boolean(investigation.conflicts.length)} /></div>
       </div>
       <div className="agent-advice">
-        <span>Agent 解释与处置建议</span>
-        <p>{investigation.recommendation ?? "未生成处置建议"}</p>
-        {investigation.rectification_recommendation ? <div className="agent-recommendation"><strong>建议责任：{investigation.rectification_recommendation.responsible_party_id}</strong><span>建议期限 {formatLongDateTime(investigation.rectification_recommendation.due_at)}</span><p>{investigation.rectification_recommendation.reason}</p></div> : null}
+        <span>调查说明与处置建议</span>
+        <p>{investigation.recommendation ? formatNarrative(investigation.recommendation) : "未生成处置建议"}</p>
+        {investigation.rectification_recommendation ? <div className="agent-recommendation"><strong>建议责任班组：{recommendedParty?.name ?? "待审核确认"}</strong><span>建议期限 {formatLongDateTime(investigation.rectification_recommendation.due_at)}</span><p>{formatNarrative(investigation.rectification_recommendation.reason)}</p></div> : null}
       </div>
       {investigation.tool_trace.length ? (
         <div className="investigation-tools">
-          <span>只读工具调用摘要</span>
+          <span>调查核验记录</span>
           <ol>
             {investigation.tool_trace.map((entry, index) => (
-              <li key={`${index}-${entry}`}>{entry}</li>
+              <li key={`${index}-${entry}`}>{formatToolLabel(entry)}</li>
             ))}
           </ol>
         </div>
@@ -340,7 +356,8 @@ function InvestigationPanel({ detail }: { detail: CaseDetailResponse }) {
 }
 
 function DefinitionGrid({ values }: { values: Record<string, unknown> }) {
-  return <dl className="definition-grid">{Object.entries(values).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{formatJsonValue(value)}</dd></div>)}</dl>;
+  const entries = Object.entries(values).filter(([key]) => key !== "zone_id" || !("zone_name" in values));
+  return <dl className="definition-grid">{entries.map(([key, value]) => <div key={key}><dt>{formatFieldLabel(key)}</dt><dd>{formatInvestigationValue(key, value)}</dd></div>)}</dl>;
 }
 
 function TagList({ values, empty, accent = false, danger = false }: { values: string[]; empty: string; accent?: boolean; danger?: boolean }) {

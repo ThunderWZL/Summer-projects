@@ -67,7 +67,7 @@ export function CasesWorkspace({
 function ContextNotice({ message }: { message: string }) {
   return (
     <div className="case-context-notice" role="status">
-      角色与责任主体暂不可用：{message}。列表仍可浏览，人工命令暂不可提交。
+      角色与责任主体暂不可用：{message}。列表仍可浏览，人工操作暂不可提交。
     </div>
   );
 }

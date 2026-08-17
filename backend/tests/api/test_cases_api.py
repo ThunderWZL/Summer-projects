@@ -5,14 +5,17 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
+    build_fixture_case_pipeline,
     get_case_pipeline,
     get_case_store,
     get_clock,
     get_investigation_port,
+    get_site_context,
+    get_user_directory,
 )
 from app.contracts import CaseStatus
 from app.domain.inmemory.case_store import InMemoryCaseStore
-from app.domain.inmemory.fixture_cases import demo_cases
+from app.domain.inmemory.fixture_cases import demo_cases, demo_submissions
 from app.main import app
 
 
@@ -23,12 +26,26 @@ def setup_function() -> None:
     get_case_pipeline.cache_clear()
     get_investigation_port.cache_clear()
     get_case_store.cache_clear()
+    store = InMemoryCaseStore()
+    for snapshot in demo_cases():
+        store.create(snapshot)
+    for submission in demo_submissions():
+        store.add_submission(submission)
+    pipeline = build_fixture_case_pipeline(
+        store,
+        get_user_directory(),
+        get_site_context(),
+        lambda: NOW,
+    )
+    app.dependency_overrides[get_case_store] = lambda: store
+    app.dependency_overrides[get_case_pipeline] = lambda: pipeline
     app.dependency_overrides[get_clock] = lambda: lambda: NOW
 
 
 def teardown_function() -> None:
     app.dependency_overrides.pop(get_clock, None)
     app.dependency_overrides.pop(get_case_store, None)
+    app.dependency_overrides.pop(get_case_pipeline, None)
 
 
 async def request(method: str, path: str, json: dict | None = None):
@@ -45,7 +62,7 @@ def test_case_list_filters_paginates_and_returns_backend_statistics() -> None:
             "GET",
             "/api/v1/cases?status=RECTIFICATION_OPEN"
             "&ppe_type=gloves&zone_id=zone-03"
-            "&responsible_party_id=team-structure-01"
+            "&responsible_party_id=team-carpentry-01"
             "&occurred_from=2026-08-07T00:00:00%2B08:00"
             "&occurred_to=2026-08-08T00:00:00%2B08:00"
             "&overdue_only=true&page=1&page_size=1",
@@ -73,9 +90,9 @@ def test_case_list_filters_paginates_and_returns_backend_statistics() -> None:
         "average_closure_minutes": 1488.6,
         "top_repeat_risk": {
             "zone_id": "zone-02",
-            "zone_name": "切割区",
-            "ppe_type": "helmet",
-            "case_count": 1,
+            "zone_name": "无背心2切割物料区",
+            "ppe_type": "vest",
+            "case_count": 2,
         },
     }
 
@@ -86,15 +103,15 @@ def test_case_detail_aggregates_context_citations_submissions_and_timeline() -> 
     assert response.status_code == 200
     body = response.json()
     assert body["snapshot"]["case_id"] == "case-01"
-    assert body["camera_name"] == "切割机位"
+    assert body["camera_name"] == "无背心2切割物料机位"
     assert (body["zone_id"], body["zone_name"], body["zone_type"]) == (
         "zone-02",
-        "切割区",
+        "无背心2切割物料区",
         "CUTTING",
     )
     assert (body["video_id"], body["video_title"]) == (
-        "video-02",
-        "切割区",
+        "video-no-vest-02",
+        "无背心2｜切割物料",
     )
     assert body["citations"][0]["standard_no"] == "GB 39800.12-2025"
     assert body["human_submissions"] == []
@@ -237,17 +254,13 @@ def test_top_repeat_risk_counts_only_confirmed_applicable_cases() -> None:
     assert response.status_code == 200
     assert response.json()["statistics"]["top_repeat_risk"] == {
         "zone_id": "zone-02",
-        "zone_name": "切割区",
-        "ppe_type": "helmet",
+        "zone_name": "无背心2切割物料区",
+        "ppe_type": "vest",
         "case_count": 2,
     }
 
 
-def test_cam04_gloves_cannot_be_approved_through_rest() -> None:
-    before = asyncio.run(
-        request("GET", "/api/v1/cases/case-recheck-no-evidence")
-    ).json()
-
+def test_cam04_gloves_can_be_approved_through_rest() -> None:
     response = asyncio.run(
         request(
             "POST",
@@ -256,24 +269,15 @@ def test_cam04_gloves_cannot_be_approved_through_rest() -> None:
                 "command_type": "APPROVE_RECTIFICATION",
                 "actor_id": "reviewer-01",
                 "expected_version": 4,
-                "reason": "尝试批准不适用的手套整改",
-                "responsible_party_id": "team-mechanical-01",
+                "reason": "攀爬作业手套要求适用，同意进入整改",
+                "responsible_party_id": "team-climbing-01",
                 "rectification_due_at": "2026-08-20T18:00:00+08:00",
             },
         )
     )
 
-    assert response.status_code == 422
-    assert response.json() == {
-        "code": "PPE_NOT_REQUIRED",
-        "message": "candidate PPE is not required for the investigated task",
-        "current_version": None,
-    }
-    after = asyncio.run(
-        request("GET", "/api/v1/cases/case-recheck-no-evidence")
-    ).json()
-    assert after["snapshot"] == before["snapshot"]
-    assert after["timeline"] == before["timeline"]
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["status"] == "RECTIFICATION_OPEN"
 
 
 def test_reviewer_and_officer_complete_review_rectification_and_recheck() -> None:
@@ -286,7 +290,7 @@ def test_reviewer_and_officer_complete_review_rectification_and_recheck() -> Non
                 "actor_id": "reviewer-01",
                 "expected_version": 4,
                 "reason": "证据和依据完整，同意进入整改",
-                "responsible_party_id": "team-electric-01",
+                "responsible_party_id": "team-cutting-02",
                 "rectification_due_at": "2026-08-20T18:00:00+08:00",
             },
         )
@@ -403,7 +407,7 @@ def test_review_rejects_ineligible_responsible_party_without_changing_case() -> 
     ) == (200, "PENDING_REVIEW", 7)
 
 
-def test_closed_vehicle_case_investigation_matches_its_vest_candidate() -> None:
+def test_closed_timber_case_investigation_matches_its_vest_candidate() -> None:
     response = asyncio.run(
         request("GET", "/api/v1/cases/case-closed-01")
     )
@@ -422,19 +426,19 @@ def test_closed_vehicle_case_investigation_matches_its_vest_candidate() -> None:
         "observation_confidence"
     ] is None
     investigation = snapshot["investigation"]
-    assert investigation["facts"]["task_code"] == "VEHICLE_ZONE_OPERATION"
+    assert investigation["facts"]["task_code"] == "TIMBER_ASSEMBLY"
     assert investigation["facts"]["task_source"] == "active_work_permit"
     assert investigation["conflicts"] == []
     assert investigation["missing_fields"] == []
-    assert investigation["applicable_task"] == "VEHICLE_ZONE_OPERATION"
-    assert investigation["hazards"] == ["车辆碰撞"]
-    assert investigation["required_ppe"] == ["vest"]
+    assert investigation["applicable_task"] == "TIMBER_ASSEMBLY"
+    assert investigation["hazards"] == ["木料碰撞", "手部伤害"]
+    assert investigation["required_ppe"] == ["helmet", "gloves", "vest"]
     assert investigation["recommendation"] == (
-        "车辆作业区人员应佩戴高可视背心"
+        "木料组装作业人员应穿戴安全背心"
     )
     assert investigation["rectification_recommendation"][
         "responsible_party_id"
-    ] == "team-logistics-01"
+    ] == "team-carpentry-02"
     assert len(investigation["citations"]) == 1
     assert investigation["tool_trace"] == [
         "list_eligible_responsible_parties",
@@ -465,30 +469,35 @@ def test_cam04_fixture_stays_pending_without_inapplicable_rectification_audit() 
         "recommended_party_id",
     ),
     [
-        ("case-facts-01", None, [], None),
+        (
+            "case-facts-01",
+            "MATERIAL_CUTTING",
+            ["helmet", "gloves", "vest"],
+            None,
+        ),
         (
             "case-01",
-            "HOT_WORK_CUTTING",
-            ["goggles", "helmet"],
-            "team-electric-01",
+            "MATERIAL_CUTTING",
+            ["helmet", "gloves", "vest"],
+            "team-cutting-02",
         ),
         (
             "case-overdue-01",
-            "HANDLING_REBAR",
-            ["gloves"],
-            "team-structure-01",
+            "BOARD_FASTENING",
+            ["helmet", "gloves", "vest"],
+            "team-carpentry-01",
         ),
         (
             "case-recheck-no-evidence",
-            "ROTATING_EQUIPMENT_OPERATION",
-            ["helmet"],
-            "team-mechanical-01",
+            "CLIMBING_WORK",
+            ["helmet", "gloves", "vest"],
+            "team-climbing-01",
         ),
         (
             "case-closed-01",
-            "VEHICLE_ZONE_OPERATION",
-            ["vest"],
-            "team-logistics-01",
+            "TIMBER_ASSEMBLY",
+            ["helmet", "gloves", "vest"],
+            "team-carpentry-02",
         ),
     ],
 )
@@ -541,7 +550,7 @@ def test_closed_fixture_preserves_its_rectification_submission_audit() -> None:
             "evidence_id": "evidence-case-closed-01",
             "image_url": "/evidence/case-closed-01/after.jpg",
             "captured_at": "2026-08-07T12:00:00+08:00",
-            "note": "整改后的车辆作业区人员高可视背心",
+            "note": "整改后的木料组装作业人员安全背心",
         }
     ]
     assert body["human_submissions"] == [
@@ -554,7 +563,7 @@ def test_closed_fixture_preserves_its_rectification_submission_audit() -> None:
             "reason": "现场已完成整改",
             "created_at": "2026-08-07T12:01:00+08:00",
             "submission_type": "RECTIFICATION_EVIDENCE",
-            "description": "已佩戴高可视背心",
+            "description": "已穿戴安全背心",
             "evidence": evidence,
         }
     ]
@@ -646,7 +655,7 @@ def test_closed_fixture_preserves_its_rectification_submission_audit() -> None:
                 "actor_id": "reviewer-01",
                 "expected_version": 4,
                 "reason": "期限错误",
-                "responsible_party_id": "team-electric-01",
+                "responsible_party_id": "team-cutting-02",
                 "rectification_due_at": "2026-08-01T18:00:00+08:00",
             },
             400,

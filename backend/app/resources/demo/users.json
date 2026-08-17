@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "actor_id": "officer-01",
+      "name": "现场安全员",
+      "role": "SITE_SAFETY_OFFICER"
+    },
+    {
+      "actor_id": "reviewer-01",
+      "name": "项目安全审核人",
+      "role": "PROJECT_SAFETY_REVIEWER"
+    }
+  ]
+}

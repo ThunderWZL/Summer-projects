@@ -17,7 +17,6 @@ from app.domain.site_context import (
     ZoneInfo,
 )
 
-SCENARIO_STARTED_AT = datetime.fromisoformat("2026-08-07T09:00:00+08:00")
 _RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources" / "demo"
 
 
@@ -52,6 +51,8 @@ class _SceneAssignment(_ConfigModel):
     zone_type: str = Field(min_length=1)
     video_id: str = Field(min_length=1)
     video_title: str = Field(min_length=1)
+    video_local_path: str = Field(min_length=1)
+    duration_ms: int = Field(gt=0)
     task_code: str | None = None
     responsible_party_id: str = Field(min_length=1)
     responsible_party_name: str = Field(min_length=1)
@@ -59,7 +60,16 @@ class _SceneAssignment(_ConfigModel):
 
 
 class _SceneAssignments(_ConfigModel):
+    scenario_started_at: datetime
+    permit_starts_at: datetime
+    permit_ends_at: datetime
     scenes: list[_SceneAssignment]
+
+    @model_validator(mode="after")
+    def permit_window_must_be_ordered(self) -> _SceneAssignments:
+        if self.permit_ends_at <= self.permit_starts_at:
+            raise ValueError("permit_ends_at must be after permit_starts_at")
+        return self
 
     @model_validator(mode="after")
     def camera_and_video_ids_must_be_unique(self) -> _SceneAssignments:
@@ -124,9 +134,9 @@ class MemorySiteContext:
                 video_id=scene.video_id,
                 camera_id=scene.camera_id,
                 title=scene.video_title,
-                local_path=f"/data/demo/{scene.camera_id.lower()}.mp4",
-                duration_ms=600_000,
-                scenario_started_at=SCENARIO_STARTED_AT,
+                local_path=scene.video_local_path,
+                duration_ms=scene.duration_ms,
+                scenario_started_at=assignments.scenario_started_at,
             )
             for scene in assignments.scenes
         ]
@@ -146,8 +156,8 @@ class MemorySiteContext:
                 task_code=scene.task_code,
                 hazards=list(self._matrices[scene.task_code].hazards),
                 responsible_party_id=scene.responsible_party_id,
-                starts_at=datetime.fromisoformat("2026-08-07T08:00:00+08:00"),
-                ends_at=datetime.fromisoformat("2026-08-07T18:00:00+08:00"),
+                starts_at=assignments.permit_starts_at,
+                ends_at=assignments.permit_ends_at,
                 status=WorkPermitStatus.ACTIVE,
             )
             for scene in assignments.scenes

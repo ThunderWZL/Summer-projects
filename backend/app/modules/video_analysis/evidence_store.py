@@ -72,3 +72,9 @@ class FileEvidenceStore:
 
     def _url(self, session_id: str, timestamp_ms: int) -> str:
         return f"{self.url_prefix}/{session_id}/{timestamp_ms}.jpg"
+
+    def resolve_jpeg(self, session_id: str, timestamp_ms: int) -> Path | None:
+        if not _SAFE_IDENTIFIER.fullmatch(session_id) or timestamp_ms < 0:
+            return None
+        path = self.root_directory / session_id / f"{timestamp_ms}.jpg"
+        return path if path.is_file() else None

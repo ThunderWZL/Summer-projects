@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import (
@@ -17,8 +18,10 @@ from app.api.deps import (
     get_site_context,
     get_session_manager,
     get_user_directory,
+    shutdown_database_runtime,
 )
-from app.contracts import Citation, InvestigationResult
+from app.config import get_settings
+from app.contracts import Citation, InvestigationResult, PpeType
 from app.domain.case_workflow import CaseWorkflow
 from app.domain.inmemory.case_store import InMemoryCaseStore
 from app.domain.inmemory.fixture_candidates import build_fixture_candidate
@@ -29,6 +32,19 @@ from app.services.case_pipeline import CasePipeline
 
 
 NOW = datetime.fromisoformat("2026-08-15T10:00:00+08:00")
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    shutdown_database_runtime()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"sqlite:///{tmp_path / 'end-to-end.db'}",
+    )
+    get_settings.cache_clear()
+    yield
+    shutdown_database_runtime()
+    get_settings.cache_clear()
 
 
 class FactsCompletingInvestigation:
@@ -138,9 +154,10 @@ def test_independent_facts_context_closes_through_public_commands_v1_to_v10() ->
     async def scenario():
         pipeline, store, workflow = facts_workflow_fixture()
         candidate = build_fixture_candidate(
-            "CAM-01",
+            "CAM-02",
             "session-facts-workflow",
             namespace="integration",
+            ppe_type=PpeType.HELMET,
         )
         assert candidate is not None
         initial_snapshot = await pipeline.process_candidate(candidate)
@@ -169,7 +186,7 @@ def test_independent_facts_context_closes_through_public_commands_v1_to_v10() ->
                     "actor_id": "reviewer-01",
                     "expected_version": 7,
                     "reason": "安全帽要求适用，批准整改",
-                    "responsible_party_id": "team-scaffold-01",
+                    "responsible_party_id": "team-cutting-02",
                     "rectification_due_at": "2026-09-01T18:00:00+08:00",
                 },
             )
@@ -222,6 +239,9 @@ def test_independent_facts_context_closes_through_public_commands_v1_to_v10() ->
         "PENDING_REVIEW",
         7,
     )
+    assert review.status_code == 200, review.text
+    assert evidence.status_code == 200, evidence.text
+    assert closed.status_code == 200, closed.text
     assert [(response.status_code, response.json()["version"]) for response in (review, evidence, closed)] == [
         (200, 8), (200, 9), (200, 10),
     ]
@@ -256,30 +276,51 @@ def test_independent_facts_context_closes_through_public_commands_v1_to_v10() ->
 
 def test_six_demo_channels_expose_the_frozen_explainable_outcomes() -> None:
     async def scenario():
-        results = {}
-        for number in range(1, 7):
-            events = await analyze(f"video-{number:02d}")
-            created = next(
-                (event for event in events if event.event_type.value == "CANDIDATE_CREATED"),
-                None,
+        video_ids = (
+            "video-safe-01",
+            "video-no-vest-02",
+            "video-no-gloves-01",
+            "video-no-vest-gloves-02",
+            "video-no-ppe",
+            "video-mixed-wearing",
+        )
+        results = []
+        details = []
+        for video_id in video_ids:
+            events = await analyze(video_id)
+            created = [
+                event
+                for event in events
+                if event.event_type.value == "CANDIDATE_CREATED"
+            ]
+            results.append((events, created))
+            details.append(
+                [
+                    (await request("GET", f"/api/v1/cases/{event.case_id}")).json()
+                    for event in created
+                ]
             )
-            results[number] = (events, created)
-        details = {}
-        for number in range(1, 6):
-            case_id = results[number][1].case_id
-            details[number] = (await request("GET", f"/api/v1/cases/{case_id}")).json()
         return results, details
 
     results, details = asyncio.run(scenario())
 
-    assert details[1]["snapshot"]["status"] == "NEEDS_HUMAN_FACTS"
-    assert details[1]["snapshot"]["investigation"]["missing_fields"]
-    assert details[2]["snapshot"]["status"] == "PENDING_REVIEW"
-    assert details[2]["snapshot"]["candidate"]["last_seen_ms"] - details[2]["snapshot"]["candidate"]["first_seen_ms"] == 1000
-    assert len(details[2]["snapshot"]["candidate"]["frames"]) == 3
-    assert "gloves" in details[3]["snapshot"]["investigation"]["required_ppe"]
-    assert "gloves" not in details[4]["snapshot"]["investigation"]["required_ppe"]
-    assert "vest" in details[5]["snapshot"]["investigation"]["required_ppe"]
-    assert results[5][1].case_id
-    assert results[6][1] is None
-    assert (results[6][0][-1].payload.candidate_count, results[6][0][-1].payload.case_count) == (0, 0)
+    expected_counts = (0, 1, 1, 2, 3, 7)
+    assert [len(created) for _, created in results] == list(expected_counts)
+    assert [
+        (events[-1].payload.candidate_count, events[-1].payload.case_count)
+        for events, _ in results
+    ] == [(count, count) for count in expected_counts]
+    assert details[0] == []
+    statuses = [
+        detail["snapshot"]["status"]
+        for channel in details[1:]
+        for detail in channel
+    ]
+    assert statuses == ["NEEDS_HUMAN_FACTS"] * sum(expected_counts[1:])
+    assert all(
+        set(detail["snapshot"]["investigation"]["required_ppe"])
+        == {"helmet", "gloves", "vest"}
+        for channel in details[1:]
+        for detail in channel
+    )
+    assert len(details[1][0]["snapshot"]["candidate"]["frames"]) == 3

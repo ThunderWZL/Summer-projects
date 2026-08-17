@@ -64,7 +64,7 @@ def test_default_configuration_is_resolved_relative_to_package_not_cwd(
     context = MemorySiteContext()
 
     assert len(context.list_videos()) == 6
-    assert assigned_task(context, "CAM-03") == "HANDLING_REBAR"
+    assert assigned_task(context, "CAM-03") == "BOARD_FASTENING"
 
 
 def test_swapping_only_cam_03_and_cam_04_assignments_swaps_permit_tasks(
@@ -83,8 +83,8 @@ def test_swapping_only_cam_03_and_cam_04_assignments_swaps_permit_tasks(
 
     context = MemorySiteContext(scene_assignments_path=path)
 
-    assert assigned_task(context, "CAM-03") == "ROTATING_EQUIPMENT_OPERATION"
-    assert assigned_task(context, "CAM-04") == "HANDLING_REBAR"
+    assert assigned_task(context, "CAM-03") == "CLIMBING_WORK"
+    assert assigned_task(context, "CAM-04") == "BOARD_FASTENING"
 
 
 def test_duplicate_task_codes_fail_configuration_loading(tmp_path: Path) -> None:
@@ -153,8 +153,17 @@ AGENT_ENV_KEYS = (
     "AGENT_LLM_MODEL",
     "AGENT_LLM_TIMEOUT_SECONDS",
     "AGENT_LLM_MAX_RETRIES",
+    "AGENT_LLM_MAX_OUTPUT_TOKENS",
     "AGENT_MAX_TOOL_ROUNDS",
     "AGENT_LLM_TEMPERATURE",
+)
+DATABASE_ENV_KEYS = ("DATABASE_URL", "DATABASE_ECHO")
+VISION_ENV_KEYS = (
+    "VISION_PROVIDER",
+    "YOLO_WEIGHTS_PATH",
+    "VISION_DEVICE",
+    "VISION_TARGET_FPS",
+    "VISION_EVIDENCE_ROOT",
 )
 
 
@@ -168,8 +177,21 @@ def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.agent_llm_model == "deepseek-v4-flash"
     assert settings.agent_llm_timeout_seconds == 30
     assert settings.agent_llm_max_retries == 2
+    assert settings.agent_llm_max_output_tokens == 1024
     assert settings.agent_max_tool_rounds == 6
     assert settings.agent_llm_temperature == 0
+
+
+def test_database_settings_load_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/siteppe-test.db")
+    monkeypatch.setenv("DATABASE_ECHO", "true")
+
+    settings = Settings()
+
+    assert settings.database_url == "sqlite:////tmp/siteppe-test.db"
+    assert settings.database_echo is True
 
 
 @pytest.mark.parametrize(
@@ -177,6 +199,7 @@ def test_agent_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ("agent_llm_timeout_seconds", 0),
         ("agent_llm_max_retries", -1),
+        ("agent_llm_max_output_tokens", 0),
         ("agent_max_tool_rounds", 0),
         ("agent_llm_temperature", -0.01),
         ("agent_llm_temperature", 2.01),
@@ -198,9 +221,26 @@ def test_env_example_lists_agent_configuration_without_secret_values() -> None:
     }
 
     assert set(AGENT_ENV_KEYS) <= values.keys()
+    assert set(DATABASE_ENV_KEYS) <= values.keys()
+    assert set(VISION_ENV_KEYS) <= values.keys()
     assert values["DEEPSEEK_API_KEY"] == ""
     assert values["VLM_API_KEY"] == ""
     assert values["EMBEDDING_API_KEY"] == ""
+    assert values["YOLO_WEIGHTS_PATH"] == ""
+
+
+def test_vision_settings_select_real_provider_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VISION_PROVIDER", "yolo")
+    monkeypatch.setenv("YOLO_WEIGHTS_PATH", "/models/best.pt")
+    monkeypatch.setenv("VISION_TARGET_FPS", "6")
+
+    settings = Settings()
+
+    assert settings.vision_provider == "yolo"
+    assert settings.yolo_weights_path == "/models/best.pt"
+    assert settings.vision_target_fps == 6
 
 
 def test_vlm_and_embedding_keys_are_never_reused_for_deepseek(
@@ -266,6 +306,7 @@ def test_configured_deepseek_without_ai_extra_fails_explicitly(
         temperature=0,
         timeout=30,
         max_retries=2,
+        max_output_tokens=1024,
     )
 
     with pytest.raises(InvestigationAgentFailed, match="langchain-deepseek is required"):
