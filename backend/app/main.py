@@ -9,6 +9,7 @@ from app.api.errors import (
 )
 from app.api.routers.cases import router as cases_router
 from app.api.routers.demo import router as demo_router
+from app.api.routers.evidence import router as evidence_router
 from app.api.routers.requirements import router as requirements_router
 from app.api.routers.sessions import router as sessions_router
 from app.api.ws import router as websocket_router
@@ -39,6 +40,7 @@ app.include_router(demo_router)
 app.include_router(requirements_router)
 app.include_router(cases_router)
 app.include_router(sessions_router)
+app.include_router(evidence_router)
 app.include_router(websocket_router)
 app.add_exception_handler(
     CaseWorkflowError,

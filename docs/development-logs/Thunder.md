@@ -454,11 +454,16 @@
   * 完成：将本任务开发记录从误写的成员日志移至任务负责人 Thunder 的日志。
   * 实现：删除 Wuweizhe 日志中本任务新增区块，并在 Thunder 日志保留真实提交与验证记录。
   * 验证：`git diff --check`，通过；本提交仅更正日志归属，未运行代码测试。
+* 14:48 `feat(video-analysis): 接入真实视觉分析会话`
+  * 完成：真实模式下由一次 YOLO 与 ByteTrack 视频推理同时驱动 MJPEG 标注流、PPE 候选聚合、案件流水线和实时事件；停止会话会等待推理线程释放。
+  * 实现：增加配置驱动的真实/fixture 适配器选择、会话级候选聚合器、证据 JPEG 持久化与读取接口、模型权重哈希追踪，并将视觉处理异常映射为可重试的 `SESSION_FAILED`。
+  * 验证：`cd backend && .venv/bin/python -m pytest tests/modules/video_analysis tests/services/test_session_manager.py tests/api/test_evidence_api.py tests/modules/investigation/test_config.py -q`，63 项测试通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`git diff --check`，通过；后端未配置 lint 和类型检查，未运行。
 
 ### 问题与处理
 
 * 首次提交时错误按模块归属推断负责人并写入 Wuweizhe 日志；任务负责人已明确为 Thunder，本提交完成更正。首次提交已推送，遵守禁止改写共享历史要求，未执行 amend 或强制推送。
+* 当前后端虚拟环境的 `asyncio` 默认线程池即使执行空函数也无法退出；真实视觉适配器改用会话受控线程并通过停止回归测试，避免会话和测试进程被默认线程池阻塞。
 
 ### 后续计划
 
-* 将单次 YOLO 与 ByteTrack 推理输出同时接入 MJPEG 画面、候选聚合和分析事件。
+* 配置本地模型权重与演示视频后执行真实推理冒烟验证，并完成后端完整回归。

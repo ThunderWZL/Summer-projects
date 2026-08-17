@@ -22,6 +22,7 @@ from app.domain.video_analysis import (
     AnalysisSessionNotActive,
     AnalysisSessionNotFound,
     AnalysisVideoNotFound,
+    VideoAnalysisProcessingFailed,
     VideoAnalysisPort,
 )
 from app.domain.site_context import VideoInfo
@@ -207,6 +208,13 @@ class SessionManager(VideoAnalysisPort):
     async def handle_vlm_processing_failed(
         self, session_id: str, error: VlmProcessingFailed
     ) -> AnalysisEvent:
+        return await self._handle_processing_failed(session_id, error)
+
+    async def _handle_processing_failed(
+        self,
+        session_id: str,
+        error: VlmProcessingFailed | VideoAnalysisProcessingFailed,
+    ) -> AnalysisEvent:
         self._require_session(session_id)
         self._streamable_session_ids.discard(session_id)
         event = await self._event_hub.publish(
@@ -228,6 +236,8 @@ class SessionManager(VideoAnalysisPort):
             return
         except VlmProcessingFailed as error:
             await self.handle_vlm_processing_failed(session.session_id, error)
+        except VideoAnalysisProcessingFailed as error:
+            await self._handle_processing_failed(session.session_id, error)
 
     def _require_session(self, session_id: str) -> AnalysisSession:
         try:
