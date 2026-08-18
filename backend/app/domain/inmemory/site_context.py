@@ -197,13 +197,37 @@ class MemorySiteContext:
         self, zone_id: str, occurred_at: datetime
     ) -> list[WorkPermit]:
         with self._lock:
-            return [
-                permit.model_copy(deep=True)
-                for permit in self._permits
-                if permit.zone_id == zone_id
-                and permit.status is WorkPermitStatus.ACTIVE
-                and permit.starts_at <= occurred_at <= permit.ends_at
-            ]
+            active = []
+            for permit in self._permits:
+                if (
+                    permit.zone_id != zone_id
+                    or permit.status is not WorkPermitStatus.ACTIVE
+                ):
+                    continue
+                rebased = self._permit_on_occurrence_date(permit, occurred_at)
+                if rebased.starts_at <= occurred_at <= rebased.ends_at:
+                    active.append(rebased)
+            return active
+
+    @staticmethod
+    def _permit_on_occurrence_date(
+        permit: WorkPermit,
+        occurred_at: datetime,
+    ) -> WorkPermit:
+        permit_timezone = permit.starts_at.tzinfo
+        local_occurrence = occurred_at.astimezone(permit_timezone)
+        starts_at = permit.starts_at.replace(
+            year=local_occurrence.year,
+            month=local_occurrence.month,
+            day=local_occurrence.day,
+        )
+        return permit.model_copy(
+            update={
+                "starts_at": starts_at,
+                "ends_at": starts_at + (permit.ends_at - permit.starts_at),
+            },
+            deep=True,
+        )
 
     def get_task_ppe_matrix(self, task_code: str) -> TaskPpeMatrix | None:
         with self._lock:

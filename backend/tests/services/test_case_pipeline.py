@@ -110,7 +110,12 @@ def make_pipeline(
         max_retries=0,
         retry_delay_seconds=0,
     )
-    return CasePipeline(store, workflow, vlm, agent), store, workflow, agent
+    return (
+        CasePipeline(store, workflow, vlm, agent, lambda: NOW),
+        store,
+        workflow,
+        agent,
+    )
 
 
 def candidate(camera_id: str = "CAM-02", suffix: str = "primary"):
@@ -136,6 +141,7 @@ def test_new_candidate_is_created_at_version_one_then_reaches_review_gate() -> N
         1,
         [],
     )
+    assert (created.created_at, created.updated_at) == (NOW, NOW)
     assert (result.status, result.version) == (CaseStatus.NEEDS_HUMAN_FACTS, 4)
     assert [transition.to_status for transition in result.transitions] == [
         CaseStatus.VLM_REVIEWED,

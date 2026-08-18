@@ -26,10 +26,7 @@ def test_start_persists_session_before_runner_creates_case() -> None:
     engine = create_database_engine("sqlite:///:memory:")
     initialize_database(engine)
     session_factory = create_session_factory(engine)
-    session_store = SqlAlchemyAnalysisSessionStore(
-        session_factory,
-        clock=lambda: NOW,
-    )
+    session_store = SqlAlchemyAnalysisSessionStore(session_factory)
     case_store = SqlAlchemyCaseStore(session_factory)
     created_case: asyncio.Future[CaseSnapshot]
 
@@ -62,6 +59,7 @@ def test_start_persists_session_before_runner_creates_case() -> None:
             stream,
             run,
             save_session=session_store.save,
+            clock=lambda: NOW,
         )
         await manager.start_session("video-no-vest-02")
         return await asyncio.wait_for(created_case, timeout=1)
