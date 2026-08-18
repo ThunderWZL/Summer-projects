@@ -558,6 +558,7 @@
 * 降低安全帽漏报，使连续未检测到安全帽的人员进入 VLM 复核。
 * 移除前端对 YOLO 候选置信度的展示，避免将其误解为装备本身的置信度。
 * 按业务处理责任分类事件，并将现场安全员列表限制为待提交整改证据事件。
+* 明确 VLM 对安全帽、手套和安全背心的视觉判定边界，降低错误排除违规。
 
 ### 开发记录
 
@@ -605,6 +606,10 @@
   * 完成：事件列表删除处理状态筛选，按待补现场事实、待项目审核、待提交整改证据、待项目复查、已逾期、系统分析中和已关闭七类展示；现场安全员只看到待提交整改证据的事件。
   * 实现：建立完整的案件状态到业务分类映射，逾期事件优先进入独立分类且不重复展示；列表请求按当前角色限制状态，安全员摘要同步收敛为整改证据与当前页逾期数量。
   * 验证：`cd frontend && npm test -- src/features/cases/CaseCenterPage.test.tsx`，2 项通过；`cd frontend && npm test`，14 个测试文件共 59 项通过；`cd frontend && npm run build`，类型检查与生产构建通过；`git diff --check`，通过；项目未配置独立 lint，当前环境未提供浏览器调试接口，未执行真实浏览器视觉验收。
+* 21:03 `fix(vlm): 补充PPE复核判定规则`
+  * 完成：明确安全帽、防护手套和安全背心的佩戴判定边界，荧光色普通上衣、安全带和工具带不再作为安全背心依据。
+  * 实现：要求模型忽略检测框及类别文字，至少两帧清楚显示正确佩戴才可排除违规；目标部位过小、模糊、遮挡或无法跨帧确认时返回不确定。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review/test_openai_compat_adapter.py -q`，7 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-prompt-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 

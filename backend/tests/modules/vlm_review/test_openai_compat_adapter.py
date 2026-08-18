@@ -139,6 +139,10 @@ def test_complete_sends_local_evidence_as_bounded_base64_images(tmp_path) -> Non
     assert "确认违规：目标装备缺失；" in prompt
     assert "排除违规：目标装备已佩戴；" in prompt
     assert "无法确认：证据不足；" in prompt
+    assert "荧光色短袖或长袖上衣不能算作安全背心" in prompt
+    assert "必须清楚看到双手均由防护手套覆盖" in prompt
+    assert "普通帽子、兜帽不能算作安全头盔" in prompt
+    assert "不得把画面中的检测框、类别文字或颜色当作佩戴证据" in prompt
 
 
 def test_missing_evidence_is_a_non_retryable_failure(tmp_path) -> None:
