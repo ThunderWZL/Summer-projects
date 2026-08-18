@@ -230,12 +230,6 @@ def classify_ppe(
     positive_class = ppe_type.value
     if positive_class in detections:
         return PpeObservationState.POSITIVE
-    if ppe_type is PpeType.HELMET:
-        return (
-            PpeObservationState.NEGATIVE
-            if "no_helmet" in detections
-            else PpeObservationState.UNKNOWN
-        )
     return PpeObservationState.NEGATIVE
 
 

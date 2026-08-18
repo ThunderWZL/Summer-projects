@@ -555,6 +555,7 @@
 * 将项目 README 收敛为面向使用者的功能介绍和操作指南。
 * 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
 * 修复新建案件固定显示 8 月 7 日的问题，使候选与案件创建时间遵从系统时间。
+* 降低安全帽漏报，使连续未检测到安全帽的人员进入 VLM 复核。
 
 ### 开发记录
 
@@ -590,6 +591,10 @@
   * 完成：修复晚于 18:00 分析演示视频时作业许可证失效的问题，并解除后端 ASGI 测试在同步依赖处的阻塞。
   * 实现：案件创建时间继续使用系统当前时间，候选发生时间保留录制场景时刻并同步到分析当天；测试入口在支持的平台使用项目已有 uvloop，并禁止本地 `.env` 改写离线测试配置。
   * 验证：`cd backend && .venv/bin/pytest -q`，388 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-final-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 19:12 `feat(vision): 支持安全帽持续缺失候选`
+  * 完成：可评估人员连续未检测到安全帽时生成缺失正类关联候选并进入 VLM 复核，同时保留连续 `no_helmet` 检测形成强负类证据的原有路径。
+  * 实现：安全帽采用与手套、背心一致的连续缺失聚合；全序列均有合格 `no_helmet` 时保存检测框及其置信度，纯缺失或混合序列使用人员置信度并生成无装备框的三帧证据；检测到 `helmet` 会重置缺失序列。
+  * 验证：`cd backend && .venv/bin/python -m pytest -q tests/modules/video_analysis tests/modules/vlm_review tests/services/test_case_pipeline.py tests/services/test_session_manager.py`，105 项通过；`cd backend && .venv/bin/python -m pytest -q`，391 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-helmet-missing.dSMZta`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，前端未修改，未运行前端检查。
 
 ### 问题与处理
 
