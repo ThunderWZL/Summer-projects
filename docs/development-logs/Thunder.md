@@ -559,6 +559,7 @@
 * 移除前端对 YOLO 候选置信度的展示，避免将其误解为装备本身的置信度。
 * 按业务处理责任分类事件，并将现场安全员列表限制为待提交整改证据事件。
 * 明确 VLM 对安全帽、手套和安全背心的视觉判定边界，降低错误排除违规。
+* 关闭千问视觉思考模式，恢复稳定的非思考复核调用。
 
 ### 开发记录
 
@@ -614,6 +615,10 @@
   * 完成：真实千问 VLM 请求开启思考模式，使 PPE 复核能够执行更充分的视觉推理。
   * 实现：将千问兼容请求的 `enable_thinking` 固定为 `true`，其他模型请求参数与输出解析保持不变。
   * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-thinking-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 22:46 `fix(vlm): 关闭千问视觉思考模式`
+  * 完成：关闭真实千问 VLM 的思考模式，避免复核持续失败并恢复非思考调用。
+  * 实现：千问兼容请求明确发送 `enable_thinking=false`，移除思考预算参数；保留 90 秒超时和 2048 Token 输出空间。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app tests`，通过；`cd backend && .venv/bin/python -m build --no-isolation --outdir /tmp/siteppe-vlm-no-thinking-build`，构建成功；全量后端测试运行至约 35% 时执行环境未返回退出码，未计为通过；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
@@ -622,6 +627,7 @@
 * 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
 * ASGI 同步依赖测试阻塞可在未修改的 `origin/dev` 基线上复现，排除系统时间功能引入；测试入口启用项目已有 uvloop 后完整后端测试通过。
 * 当前环境未提供可用的浏览器调试接口，本次事件分类改动未执行真实浏览器视觉验收；已通过组件测试和生产构建验证结构、角色过滤与响应式样式编译。
+* 本次全量后端测试运行至约 35% 时执行环境提前结束且未返回退出码；VLM 模块 48 项测试和后端构建均已通过。
 
 ### 后续计划
 
