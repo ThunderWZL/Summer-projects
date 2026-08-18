@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -65,10 +65,39 @@ class WorkPermit(SiteContextModel):
 
 class TaskPpeMatrix(SiteContextModel):
     task_code: str
+    name: str
     hazards: list[str]
     required_ppe: list[PpeType]
     exception_note: str | None = None
     rectification_window_minutes: int = Field(gt=0)
+
+
+class WorksitePreset(SiteContextModel):
+    preset_id: str
+    name: str
+    required_ppe: list[PpeType]
+
+
+class CameraWorksiteConfiguration(SiteContextModel):
+    camera_id: str
+    mode: Literal["PRESET", "CUSTOM"]
+    preset_id: str | None = None
+    name: str
+    required_ppe: list[PpeType]
+
+
+class CameraNotFound(ValueError):
+    code = "CAMERA_NOT_FOUND"
+
+    def __init__(self, camera_id: str) -> None:
+        super().__init__(f"camera {camera_id} was not found")
+
+
+class WorksitePresetNotFound(ValueError):
+    code = "WORKSITE_PRESET_NOT_FOUND"
+
+    def __init__(self, preset_id: str) -> None:
+        super().__init__(f"worksite preset {preset_id} was not found")
 
 
 class ResponsibleParty(SiteContextModel):
@@ -87,7 +116,7 @@ class DemoUser(SiteContextModel):
 
 
 class SiteContextPort(Protocol):
-    """Agent 业务工具与 /api/v1/demo/* 的只读数据来源。"""
+    """Agent 业务工具与 /api/v1/demo/* 的运行期业务上下文。"""
 
     def get_zone_at(self, camera_id: str) -> ZoneInfo | None: ...
 
@@ -104,6 +133,26 @@ class SiteContextPort(Protocol):
     def list_videos(self) -> list[VideoInfo]: ...
 
     def get_video(self, video_id: str) -> VideoInfo | None: ...
+
+    def list_worksite_presets(self) -> list[WorksitePreset]: ...
+
+    def list_camera_worksite_configurations(
+        self,
+    ) -> list[CameraWorksiteConfiguration]: ...
+
+    def get_camera_worksite_configuration(
+        self, camera_id: str
+    ) -> CameraWorksiteConfiguration | None: ...
+
+    def configure_camera_worksite(
+        self,
+        camera_id: str,
+        *,
+        mode: Literal["PRESET", "CUSTOM"],
+        preset_id: str | None = None,
+        name: str | None = None,
+        required_ppe: list[PpeType] | None = None,
+    ) -> CameraWorksiteConfiguration: ...
 
 
 class UserDirectoryPort(Protocol):

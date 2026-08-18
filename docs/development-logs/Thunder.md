@@ -553,6 +553,7 @@
 
 * 让六路监控默认持续播放，同时保持点击开始后一次只分析一路。
 * 将项目 README 收敛为面向使用者的功能介绍和操作指南。
+* 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
 
 ### 开发记录
 
@@ -564,10 +565,15 @@
   * 完成：README 改为介绍核心功能、六路场景、快速启动和人工闭环用法，删除架构、接口、数据库、依赖分组和测试命令等开发细节。
   * 实现：保留运行所需的视频、模型、密钥配置和双终端启动步骤，并将整改流程更新为直接上传整改照片。
   * 验证：`git diff --check`，通过；`test -f backend/.env.example && test -f frontend/package.json && test -d data/demo && test -f best.pt`，引用的本地路径均存在；项目未配置 Markdown lint，本提交仅修改文档，未运行代码测试和构建。
+* 13:01 `feat(rules): 支持运行期场地PPE配置`
+  * 完成：新增六路 CAM 场地配置读取与更新接口，支持选择中文预制场地或自定义场地名称及安全帽、手套、安全背心要求；配置仅保存在当前服务内存中。
+  * 实现：运行期上下文原子更新对应 CAM 的作业许可与 PPE 矩阵，调查解析器继续通过原有接口读取最新规则；接口通过区分预制与自定义的请求结构限制输入，不向前端暴露内部任务代码。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/domain/test_site_context.py tests/domain/test_resolver.py tests/api/test_demo_api.py -q`，39 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-camera-rules-backend`，构建成功；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
 * 当前环境未提供可用的浏览器调试接口，未执行真实浏览器播放验收；已通过组件测试校验自动播放、循环、静音与内联播放属性。
+* 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
 
 ### 后续计划
 

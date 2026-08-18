@@ -103,6 +103,61 @@ def test_unknown_task_code_has_no_matrix() -> None:
     assert context.get_task_ppe_matrix("NO_SUCH_TASK") is None
 
 
+def test_runtime_preset_configuration_changes_only_the_selected_camera() -> None:
+    context = make_context()
+
+    configured = context.configure_camera_worksite(
+        "CAM-03",
+        mode="PRESET",
+        preset_id="CLIMBING_WORK",
+    )
+
+    assert configured.camera_id == "CAM-03"
+    assert configured.mode == "PRESET"
+    assert configured.preset_id == "CLIMBING_WORK"
+    assert configured.name == "攀爬作业"
+    assert set(configured.required_ppe) == {
+        PpeType.HELMET,
+        PpeType.GLOVES,
+        PpeType.VEST,
+    }
+    assert [
+        permit.task_code
+        for permit in context.find_active_work_permits("zone-03", SCENARIO_TIME)
+    ] == ["CLIMBING_WORK"]
+    assert [
+        permit.task_code
+        for permit in context.find_active_work_permits("zone-04", SCENARIO_TIME)
+    ] == ["CLIMBING_WORK"]
+
+
+def test_runtime_custom_configuration_defines_the_three_ppe_requirements() -> None:
+    context = make_context()
+
+    configured = context.configure_camera_worksite(
+        "CAM-02",
+        mode="CUSTOM",
+        name="临时材料堆放区",
+        required_ppe=[PpeType.HELMET, PpeType.VEST],
+    )
+
+    assert configured.mode == "CUSTOM"
+    assert configured.preset_id is None
+    assert configured.name == "临时材料堆放区"
+    assert configured.required_ppe == [PpeType.HELMET, PpeType.VEST]
+    permits = context.find_active_work_permits("zone-02", SCENARIO_TIME)
+    matrix = context.get_task_ppe_matrix(permits[0].task_code)
+    assert matrix is not None
+    assert matrix.name == "临时材料堆放区"
+    assert matrix.required_ppe == [PpeType.HELMET, PpeType.VEST]
+
+    restarted = make_context()
+    restored = restarted.get_camera_worksite_configuration("CAM-02")
+    assert restored is not None
+    assert restored.mode == "PRESET"
+    assert restored.name == "物料切割"
+
+
 @pytest.mark.parametrize("minutes", [0, -1])
 def test_task_ppe_matrix_requires_positive_rectification_window(
     minutes: int,
