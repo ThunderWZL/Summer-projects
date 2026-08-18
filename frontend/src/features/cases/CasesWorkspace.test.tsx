@@ -10,8 +10,9 @@ vi.mock("../../shared/api", () => ({
   getDemoContext: api.getDemoContext,
 }));
 vi.mock("./CaseCenterPage", () => ({
-  CaseCenterPage: ({ onOpenCase }: { onOpenCase: (caseId: string) => void }) => (
+  CaseCenterPage: ({ actorRole, onOpenCase }: { actorRole: string | null; onOpenCase: (caseId: string) => void }) => (
     <section aria-label="案件列表">
+      <span>queue-role:{actorRole ?? "all"}</span>
       <button type="button" onClick={() => onOpenCase("case-02")}>打开 case-02</button>
     </section>
   ),
@@ -36,6 +37,7 @@ describe("CasesWorkspace", () => {
     const { rerender } = render(
       <CasesWorkspace actorId="officer-01" selectedCaseId={null} onSelectCase={onSelectCase} />,
     );
+    expect(screen.getByText("queue-role:SITE_SAFETY_OFFICER")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "打开 case-02" }));
     expect(onSelectCase).toHaveBeenCalledWith("case-02");
 
