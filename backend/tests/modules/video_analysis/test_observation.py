@@ -188,7 +188,7 @@ def test_tool_occlusion_is_not_claimed_as_hand_visibility() -> None:
     ) is PpeObservationState.NEGATIVE
 
 
-def test_helmet_requires_a_real_negative_detection() -> None:
+def test_missing_helmet_is_negative_after_the_coarse_gate() -> None:
     gate = EvaluabilityGate(config())
     make_stable(gate)
     no_head_observation = frame(200)
@@ -196,7 +196,7 @@ def test_helmet_requires_a_real_negative_detection() -> None:
 
     assert classify_ppe(
         no_head_observation, PpeType.HELMET, evaluability, gate.config
-    ) is PpeObservationState.UNKNOWN
+    ) is PpeObservationState.NEGATIVE
 
 
 def test_only_the_three_real_ppe_types_can_be_enabled() -> None:
