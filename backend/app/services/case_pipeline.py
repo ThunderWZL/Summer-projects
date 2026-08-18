@@ -1,4 +1,5 @@
-from collections.abc import Callable
+import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from app.contracts import (
@@ -17,6 +18,9 @@ from app.domain.case_workflow import (
 )
 from app.domain.investigation import InvestigationPort
 from app.modules.vlm_review.service import VlmReviewService
+
+
+TransitionObserver = Callable[[CaseSnapshot], Awaitable[None]]
 
 
 class CasePipeline:
@@ -53,7 +57,12 @@ class CasePipeline:
         )
         return self._store.create(snapshot)
 
-    async def process_candidate(self, candidate: CandidateEvidence) -> CaseSnapshot:
+    async def process_candidate(
+        self,
+        candidate: CandidateEvidence,
+        *,
+        on_transition: TransitionObserver | None = None,
+    ) -> CaseSnapshot:
         snapshot = self.ensure_case(candidate)
         if snapshot.status is CaseStatus.YOLO_CANDIDATE:
             await self._vlm.review_candidate(candidate.candidate_id)
@@ -61,22 +70,28 @@ class CasePipeline:
             if refreshed is None:
                 raise CaseNotFound(snapshot.case_id)
             snapshot = refreshed
+            if on_transition is not None:
+                await on_transition(snapshot)
         if snapshot.status is CaseStatus.VLM_REJECTED:
             return snapshot
-        investigation: InvestigationResult | None = None
         if snapshot.status is CaseStatus.VLM_REVIEWED:
-            investigation = self._investigation.investigate(snapshot.case_id)
             snapshot = self._workflow.apply(
                 snapshot.case_id,
                 StartInvestigation(snapshot.version),
             )
+            if on_transition is not None:
+                await on_transition(snapshot)
         if snapshot.status is CaseStatus.INVESTIGATING:
-            if investigation is None:
-                investigation = self._investigation.investigate(snapshot.case_id)
+            investigation = await asyncio.to_thread(
+                self._investigation.investigate,
+                snapshot.case_id,
+            )
             snapshot = self._workflow.apply(
                 snapshot.case_id,
                 RecordInvestigation(snapshot.version, investigation),
             )
+            if on_transition is not None:
+                await on_transition(snapshot)
         return snapshot
 
     def resume_investigation(self, case_id: str) -> CaseSnapshot:

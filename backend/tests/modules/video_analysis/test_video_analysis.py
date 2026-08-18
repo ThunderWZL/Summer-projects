@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
-from app.contracts import AnalysisStage, CaseStatus, PpeType
+from app.contracts import AnalysisStage, CaseStatus, PpeType, VlmVerdict
 from app.domain.site_context import VideoInfo
 from app.domain.video_analysis import AnalysisSession
 from app.modules.video_analysis.candidate_aggregator import CandidateAggregator
@@ -76,12 +76,81 @@ class _Pipeline:
             transitions=[],
         )
 
-    async def process_candidate(self, candidate):
+    async def process_candidate(self, candidate, *, on_transition=None):
         return SimpleNamespace(
             case_id=f"case-{candidate.candidate_id}",
             vlm_review=None,
             transitions=[],
         )
+
+
+class _BlockingPipeline(_Pipeline):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    async def process_candidate(self, candidate, *, on_transition=None):
+        occurred_at = datetime(2026, 8, 18, tzinfo=timezone.utc)
+        review = SimpleNamespace(
+            verdict=VlmVerdict.CONFIRMED,
+            evidence_sufficient=True,
+            reason="语义复核确认违规",
+        )
+        vlm_transition = SimpleNamespace(
+            to_status=CaseStatus.VLM_REVIEWED,
+            occurred_at=occurred_at,
+        )
+        vlm_snapshot = SimpleNamespace(
+            case_id=f"case-{candidate.candidate_id}",
+            status=CaseStatus.VLM_REVIEWED,
+            version=2,
+            updated_at=occurred_at,
+            vlm_review=review,
+            transitions=[vlm_transition],
+        )
+        if on_transition is not None:
+            await on_transition(vlm_snapshot)
+
+        investigation_transition = SimpleNamespace(
+            to_status=CaseStatus.INVESTIGATING,
+            occurred_at=occurred_at,
+        )
+        investigating_snapshot = SimpleNamespace(
+            case_id=vlm_snapshot.case_id,
+            status=CaseStatus.INVESTIGATING,
+            version=3,
+            updated_at=occurred_at,
+            vlm_review=review,
+            transitions=[vlm_transition, investigation_transition],
+        )
+        if on_transition is not None:
+            await on_transition(investigating_snapshot)
+
+        self.started.set()
+        released = await asyncio.to_thread(self.release.wait, 1)
+        if not released:
+            raise TimeoutError("test did not release investigation")
+
+        completed_transition = SimpleNamespace(
+            to_status=CaseStatus.PENDING_REVIEW,
+            occurred_at=occurred_at,
+        )
+        result = SimpleNamespace(
+            case_id=vlm_snapshot.case_id,
+            status=CaseStatus.PENDING_REVIEW,
+            version=4,
+            updated_at=occurred_at,
+            vlm_review=review,
+            transitions=[
+                vlm_transition,
+                investigation_transition,
+                completed_transition,
+            ],
+        )
+        if on_transition is not None:
+            await on_transition(result)
+        return result
 
 
 class _RecordingManager:
@@ -188,6 +257,59 @@ def test_one_inference_pass_drives_live_mjpeg_candidate_and_finish(tmp_path) -> 
         "SESSION_FINISHED",
     ]
     assert events[-1][2]["candidate_count"] == 1
+
+
+def test_investigation_status_is_published_before_agent_finishes(tmp_path) -> None:
+    async def scenario():
+        runner_release = Event()
+        runner = _Runner(_frames(), runner_release)
+        pipeline = _BlockingPipeline()
+        analysis = VisionVideoAnalysis(
+            _Context(),
+            pipeline,
+            runner_factory=lambda: runner,
+            aggregator_factory=lambda session, video: CandidateAggregator(
+                session_id=session.session_id,
+                camera_id=video.camera_id,
+                scene_started_at=video.scenario_started_at,
+                model_name="test-yolo",
+                model_version="test-v1",
+                config=_config(),
+            ),
+            evidence_store=FileEvidenceStore(tmp_path),
+            jpeg_encoder=lambda frame: b"\xff\xd8" + bytes([frame]) + b"\xff\xd9",
+            inference_fps=5.0,
+        )
+        session = AnalysisSession(
+            session_id="analysis-session-progress",
+            video_id="video-real",
+            stage=AnalysisStage.STARTING,
+            started_at=datetime(2026, 8, 18, tzinfo=timezone.utc),
+        )
+        manager = _RecordingManager()
+        run_task = asyncio.create_task(analysis.run_session(session, manager))
+        runner_release.set()
+
+        started = await asyncio.to_thread(pipeline.started.wait, 0.2)
+        assert started is True
+        events_before_agent_returns = list(manager.events)
+
+        pipeline.release.set()
+        await _wait_task(run_task)
+        return events_before_agent_returns, manager.events
+
+    events_before_agent_returns, all_events = asyncio.run(scenario())
+
+    vlm_event = next(
+        event for event in events_before_agent_returns if event[0] == "VLM_REVIEWED"
+    )
+    assert vlm_event[2]["payload"].status is CaseStatus.VLM_REVIEWED
+    investigation_event = next(
+        event for event in events_before_agent_returns if event[0] == "CASE_UPDATED"
+    )
+    assert investigation_event[2]["payload"].status is CaseStatus.INVESTIGATING
+    assert investigation_event[2]["payload"].action == "START_INVESTIGATION"
+    assert all_events[-1][0] == "SESSION_FINISHED"
 
 
 def test_stop_waits_until_runner_observes_stop_request(tmp_path) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from threading import Event
 
 import pytest
 
@@ -51,6 +52,20 @@ class FixedInvestigation:
         return self.result
 
 
+class BlockingInvestigation(FixedInvestigation):
+    def __init__(self, result: InvestigationResult) -> None:
+        super().__init__(result)
+        self.started = Event()
+        self.release = Event()
+
+    def investigate(self, case_id: str) -> InvestigationResult:
+        self.case_ids.append(case_id)
+        self.started.set()
+        if not self.release.wait(timeout=1):
+            raise TimeoutError("test did not release investigation")
+        return self.result
+
+
 class FailingVlmModel:
     async def complete(self, _request):
         raise VlmProcessingFailed("fixture unavailable", retryable=False, attempts=1)
@@ -87,6 +102,7 @@ def make_pipeline(
     scenario: FixedVlmScenario = FixedVlmScenario.AUTO,
     investigation_result: InvestigationResult | None = None,
     investigation_error: InvestigationAgentFailed | None = None,
+    investigation_adapter: FixedInvestigation | None = None,
     model=None,
 ) -> tuple[CasePipeline, InMemoryCaseStore, CaseWorkflow, FixedInvestigation]:
     store = InMemoryCaseStore()
@@ -96,9 +112,8 @@ def make_pipeline(
         clock=lambda: NOW,
         responsible_party_is_eligible=lambda _snapshot, _party_id: True,
     )
-    agent = FixedInvestigation(
-        investigation_result or investigation(),
-        investigation_error,
+    agent = investigation_adapter or FixedInvestigation(
+        investigation_result or investigation(), investigation_error
     )
     vlm = VlmReviewService(
         store,
@@ -116,6 +131,31 @@ def make_pipeline(
         workflow,
         agent,
     )
+
+
+def test_investigation_start_is_observable_before_agent_returns() -> None:
+    blocking = BlockingInvestigation(investigation())
+    pipeline, _, _, _ = make_pipeline(investigation_adapter=blocking)
+    observed: list[CaseStatus] = []
+
+    async def scenario() -> None:
+        async def record_transition(snapshot) -> None:
+            observed.append(snapshot.status)
+
+        task = asyncio.create_task(
+            pipeline.process_candidate(
+                candidate(),
+                on_transition=record_transition,
+            )
+        )
+        started = await asyncio.to_thread(blocking.started.wait, 0.2)
+        assert started is True
+        assert observed == [CaseStatus.VLM_REVIEWED, CaseStatus.INVESTIGATING]
+        blocking.release.set()
+        result = await asyncio.wait_for(task, timeout=0.2)
+        assert result.status is CaseStatus.PENDING_REVIEW
+
+    asyncio.run(scenario())
 
 
 def candidate(camera_id: str = "CAM-02", suffix: str = "primary"):
@@ -197,8 +237,8 @@ def test_vlm_technical_failure_preserves_candidate_and_business_timeline() -> No
     assert investigation_adapter.case_ids == []
 
 
-def test_agent_failure_does_not_leave_case_investigating() -> None:
-    pipeline, store, _, _ = make_pipeline(
+def test_agent_failure_preserves_visible_investigating_state_for_retry() -> None:
+    pipeline, store, _, investigation_adapter = make_pipeline(
         investigation_error=InvestigationAgentFailed("agent output invalid")
     )
     evidence = candidate()
@@ -208,10 +248,16 @@ def test_agent_failure_does_not_leave_case_investigating() -> None:
 
     stored = store.find_by_candidate(evidence.candidate_id)
     assert stored is not None
-    assert (stored.status, stored.version) == (CaseStatus.VLM_REVIEWED, 2)
+    assert (stored.status, stored.version) == (CaseStatus.INVESTIGATING, 3)
     assert [transition.to_status for transition in stored.transitions] == [
-        CaseStatus.VLM_REVIEWED
+        CaseStatus.VLM_REVIEWED,
+        CaseStatus.INVESTIGATING,
     ]
+
+    investigation_adapter.error = None
+    retried = asyncio.run(pipeline.process_candidate(evidence))
+
+    assert (retried.status, retried.version) == (CaseStatus.PENDING_REVIEW, 4)
 
 
 @pytest.mark.parametrize(
