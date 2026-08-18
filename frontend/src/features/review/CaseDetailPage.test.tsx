@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { demoContext } from "../../test/fixtures";
@@ -12,6 +12,7 @@ vi.mock("../cases/api", () => ({
   },
   fetchCaseDetail: vi.fn(),
   submitCaseCommand: vi.fn(),
+  uploadRectificationEvidenceImage: vi.fn(),
 }));
 
 const detail: CaseDetailResponse = {
@@ -116,7 +117,7 @@ const detail: CaseDetailResponse = {
 
 describe("CaseDetailPage display copy", () => {
   beforeEach(() => {
-    vi.mocked(fetchCaseDetail).mockResolvedValue(detail);
+    vi.mocked(fetchCaseDetail).mockReset().mockResolvedValue(detail);
   });
 
   it("shows readable Chinese labels instead of backend codes and file-derived names", async () => {
@@ -153,5 +154,22 @@ describe("CaseDetailPage display copy", () => {
     expect(screen.getByText("系统自动处理")).toBeTruthy();
 
     expect(screen.queryByText(/TIMBER_ASSEMBLY|task_code|openai_compat|qwen3\.6|team-carpentry-02|actor null|无防护/)).toBeNull();
+  });
+
+  it("reloads the case detail when the reviewer returns to the page", async () => {
+    render(
+      <CaseDetailPage
+        caseId={detail.snapshot.case_id}
+        actor={demoContext.users.find((user) => user.actor_id === "reviewer-01")!}
+        context={demoContext}
+        onBack={vi.fn()}
+      />,
+    );
+    await screen.findByRole("heading", { name: "木料组装区人员未佩戴防护手套" });
+    expect(fetchCaseDetail).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(fetchCaseDetail).toHaveBeenCalledTimes(2));
   });
 });

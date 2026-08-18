@@ -10,6 +10,7 @@ from typing import Any
 from app.config import Settings
 from app.contracts import PpeType
 from app.domain.site_context import SiteContextPort
+from app.domain.video_analysis import scenario_started_at_on_analysis_date
 from app.modules.video_analysis.candidate_aggregator import CandidateAggregator
 from app.modules.video_analysis.evidence_store import FileEvidenceStore
 from app.modules.video_analysis.observation import CandidateAggregationConfig
@@ -47,7 +48,10 @@ def build_vision_video_analysis(
         return CandidateAggregator(
             session_id=session.session_id,
             camera_id=video.camera_id,
-            scene_started_at=video.scenario_started_at,
+            scene_started_at=scenario_started_at_on_analysis_date(
+                video.scenario_started_at,
+                session.started_at,
+            ),
             model_name=settings.vision_model_name,
             model_version=settings.vision_model_version,
             weights_sha256=weights_sha256,

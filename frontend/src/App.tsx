@@ -29,6 +29,7 @@ function readRoute(hash: string): AppRoute {
 
 export function App() {
   const [actorId, setActorId] = useState<DemoActorId>("officer-01");
+  const [configurationOpen, setConfigurationOpen] = useState(false);
   const [hash, setHash] = useState(() => window.location.hash || "#/monitor");
 
   useEffect(() => {
@@ -64,29 +65,45 @@ export function App() {
           <a
             href="#/cases"
             aria-current={casesActive ? "page" : undefined}
-            onClick={() => setHash("#/cases")}
+            onClick={() => {
+              setHash("#/cases");
+              setConfigurationOpen(false);
+            }}
           >
             案件中心
           </a>
         </nav>
-        <label htmlFor="demo-actor">
-          当前角色
-          <select
-            id="demo-actor"
-            aria-label="当前角色"
-            value={actorId}
-            onChange={(event) =>
-              setActorId(event.target.value as DemoActorId)
-            }
+        {casesActive ? (
+          <label htmlFor="demo-actor">
+            当前角色
+            <select
+              id="demo-actor"
+              aria-label="当前角色"
+              value={actorId}
+              onChange={(event) =>
+                setActorId(event.target.value as DemoActorId)
+              }
+            >
+              <option value="officer-01">现场安全员</option>
+              <option value="reviewer-01">项目安全审核人</option>
+            </select>
+          </label>
+        ) : (
+          <button
+            className="topbar-action"
+            type="button"
+            onClick={() => setConfigurationOpen(true)}
           >
-            <option value="officer-01">现场安全员</option>
-            <option value="reviewer-01">项目安全审核人</option>
-          </select>
-        </label>
+            配置
+          </button>
+        )}
       </header>
       <main>
         <div hidden={casesActive}>
-          <MonitorPage />
+          <MonitorPage
+            configurationOpen={configurationOpen}
+            onCloseConfiguration={() => setConfigurationOpen(false)}
+          />
         </div>
         <div hidden={!casesActive}>
           <CasesWorkspace

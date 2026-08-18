@@ -449,6 +449,7 @@
 * 补齐 Ultralytics 目标跟踪运行依赖，确保真实 YOLO 视频分析可以启动。
 * 修复前端关键证据帧代理，使案件详情能够显示后端生成的证据图片。
 * 将前端直接暴露的内部字段、枚举和演示素材名称转换为面向演示的中文表述。
+* 支持现场安全员直接上传整改图片，并让审核人在复查区域查看完整整改提交信息。
 
 ### 开发记录
 
@@ -517,6 +518,10 @@
   * 完成：DeepSeek 请求、输出或工具调用失败时，案件不再停留于假的“调查中”，分析会话会明确返回可重试失败。
   * 实现：首次调查改为 Agent 成功后再连续写入启动与结果迁移；DeepSeek 传输异常统一转换为调查域错误，会话管理器发布 `INVESTIGATION_PROCESSING_FAILED`。已处于旧 `INVESTIGATING` 状态的案件仍可通过原候选证据恢复调查。
   * 验证：`backend/.venv/bin/python -m pytest backend/tests/modules/investigation backend/tests/services/test_case_pipeline.py backend/tests/services/test_session_manager.py backend/tests/modules/video_analysis/test_video_analysis.py -q`，86 项通过；`backend/.venv/bin/python -m compileall -q backend/app`，通过；`pip --python backend/.venv/bin/python check`，无损坏依赖；`backend/.venv/bin/python -m build backend --wheel --no-isolation --outdir /tmp/siteppe-agent-failure-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 22:13 `feat(rectification): 支持整改图片上传与审核展示`
+  * 完成：现场安全员可选择本地 JPEG、PNG 或 WebP 图片作为整改证据；审核人在复查操作区直接查看提交人、时间、理由、整改说明和证据图片，人工提交历史同步展示图片。
+  * 实现：新增带角色、案件状态、5 MB 大小、媒体类型与文件签名校验的同源图片上传和读取接口；图片原子写入证据目录并返回稳定地址；详情页在角色切换和窗口重新聚焦时重新读取最新案件。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -q tests/modules/video_analysis/test_evidence_store.py tests/api/test_evidence_api.py tests/api/test_cases_api.py`，33 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd frontend && npm test`，12 个测试文件共 52 项通过；`cd frontend && npm run build`，构建成功；`git diff --check`，通过；后端与前端未配置独立 lint，未运行。
 
 ### 问题与处理
 
@@ -540,3 +545,60 @@
 * 将 `feat/real-vision-wiring` 合并到 `dev`；配置本地模型权重与演示视频后执行真实推理冒烟验证。
 * 在演示环境将六个约定视频挂载到 `/data/demo` 后，执行六路播放与案件数量冒烟验收。
 * 启动前后端，用真实 CPU YOLO、Qwen VLM、RAG 与调查 Agent 执行一次案件人工整改闭环演示。
+* 使用真实整改照片完成一次安全员上传、审核人查看并关闭案件的浏览器验收。
+
+## 2026-08-18
+
+### 当日目标
+
+* 让六路监控默认持续播放，同时保持点击开始后一次只分析一路。
+* 将项目 README 收敛为面向使用者的功能介绍和操作指南。
+* 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
+* 修复新建案件固定显示 8 月 7 日的问题，使候选与案件创建时间遵从系统时间。
+
+### 开发记录
+
+* 00:41 `feat(monitor): 支持六路视频实时循环播放`
+  * 完成：六路监控卡片在未分析时自动静音循环播放；选中通道继续切换到现有实时标注流，其余通道不中断播放。
+  * 实现：仅调整通道卡片的视频播放属性与状态文案，保留单活动会话、点击启动和切换确认逻辑。
+  * 验证：`cd frontend && npm test -- --run src/features/monitor/ChannelCard.test.tsx`，2 项通过；`cd frontend && npm test`，12 个测试文件共 52 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 12:10 `docs(readme): 聚焦项目功能与使用方法`
+  * 完成：README 改为介绍核心功能、六路场景、快速启动和人工闭环用法，删除架构、接口、数据库、依赖分组和测试命令等开发细节。
+  * 实现：保留运行所需的视频、模型、密钥配置和双终端启动步骤，并将整改流程更新为直接上传整改照片。
+  * 验证：`git diff --check`，通过；`test -f backend/.env.example && test -f frontend/package.json && test -d data/demo && test -f best.pt`，引用的本地路径均存在；项目未配置 Markdown lint，本提交仅修改文档，未运行代码测试和构建。
+* 13:01 `feat(rules): 支持运行期场地PPE配置`
+  * 完成：新增六路 CAM 场地配置读取与更新接口，支持选择中文预制场地或自定义场地名称及安全帽、手套、安全背心要求；配置仅保存在当前服务内存中。
+  * 实现：运行期上下文原子更新对应 CAM 的作业许可与 PPE 矩阵，调查解析器继续通过原有接口读取最新规则；接口通过区分预制与自定义的请求结构限制输入，不向前端暴露内部任务代码。
+  * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/domain/test_site_context.py tests/domain/test_resolver.py tests/api/test_demo_api.py -q`，39 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-camera-rules-backend`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 13:08 `feat(frontend): 增加场地配置表单`
+  * 完成：新增六路 CAM 场地配置弹窗，可选择中文预制场地，或填写自定义场地名称并勾选安全帽、防护手套和安全背心要求；分析期间表单不可保存。
+  * 实现：增加类型化场地配置读取与更新客户端；通道列表和编辑表单分离，使用现有监控台颜色、间距与响应式布局，并提供键盘可访问的原生表单控件及明确的保存状态。
+  * 验证：`cd frontend && npm test -- --run src/features/monitor/WorksiteConfigurationDialog.test.tsx src/shared/api.test.ts`，2 个测试文件共 7 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 13:14 `feat(monitor): 接入六路场地规则配置`
+  * 完成：监控台顶部以配置按钮替换角色切换，案件中心保留角色选择；六路监控卡片以中文展示当前场地和 PPE 要求，保存配置后立即更新。
+  * 实现：监控页并行加载视频与运行期场地配置，通过配置接口写回指定 CAM；分析启动或运行期间禁止保存配置，避免当前推理规则中途变化。
+  * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm test -- --run src/App.test.tsx src/features/monitor/ChannelCard.test.tsx src/features/monitor/MonitorPage.test.tsx`，3 个测试文件共 17 项通过；`cd frontend && npm run build`，构建成功；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests -q`，382 项通过、1 项跳过、1 项因既有相对路径依赖运行目录而失败；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/modules/requirements_rag/test_acceptance_regressions.py::test_shipped_manifest_loads_with_real_provenance_metadata -q`，该项在后端目录重跑通过；项目未配置独立 lint，未运行。
+* 13:43 `fix(frontend): 移除配置重启提示`
+  * 完成：删除场地配置页面中后端重启后恢复默认的提示文字，仅保留配置操作说明。
+  * 实现：收敛配置弹窗说明文案，并增加该提示不再显示的组件回归断言。
+  * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 17:09 `fix(events): 使用系统时间创建案件`
+  * 完成：新分析会话产生的候选发生时间和案件创建时间不再继承固定的 2026 年 8 月 7 日；真实 YOLO 与 fixture 路径使用同一系统时间语义。
+  * 实现：分析会话记录带时区的启动时间，候选以会话启动时间叠加视频位置，案件通过注入时钟记录实际创建时间；演示作业许可证按事件日期重建当天 08:00—18:00 时间窗，保持 resolver 规则有效。
+  * 验证：`cd backend && env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/services/test_case_pipeline.py tests/services/test_session_manager.py tests/services/test_session_manager_sql_persistence.py tests/modules/video_analysis/test_runtime.py tests/modules/video_analysis/test_video_analysis.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py`，49 项通过；`cd backend && timeout 15s env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/integration/test_end_to_end.py::test_new_demo_case_uses_system_time_and_current_permit`，1 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-build-29baXn`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 18:49 `fix(events): 修复系统时间边界与测试阻塞`
+  * 完成：修复晚于 18:00 分析演示视频时作业许可证失效的问题，并解除后端 ASGI 测试在同步依赖处的阻塞。
+  * 实现：案件创建时间继续使用系统当前时间，候选发生时间保留录制场景时刻并同步到分析当天；测试入口在支持的平台使用项目已有 uvloop，并禁止本地 `.env` 改写离线测试配置。
+  * 验证：`cd backend && .venv/bin/pytest -q`，388 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-final-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+
+### 问题与处理
+
+* 当前环境未提供可用的浏览器调试接口，未执行真实浏览器播放验收；已通过组件测试校验自动播放、循环、静音与内联播放属性。
+* 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
+* 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
+* ASGI 同步依赖测试阻塞可在未修改的 `origin/dev` 基线上复现，排除系统时间功能引入；测试入口启用项目已有 uvloop 后完整后端测试通过。
+
+### 后续计划
+
+* 在演示浏览器中确认六路视频同时循环播放，并点击任一路验证仅该路切换为分析标注流。
+* 在 `dev` 集成环境新建一个案件，确认列表与详情显示当前系统日期；历史案件保留原始时间不回填。

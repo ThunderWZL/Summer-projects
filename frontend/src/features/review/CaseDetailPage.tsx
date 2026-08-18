@@ -1,6 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
-import { CaseApiError, fetchCaseDetail, submitCaseCommand } from "../cases/api";
+import {
+  CaseApiError,
+  fetchCaseDetail,
+  submitCaseCommand,
+  uploadRectificationEvidenceImage,
+} from "../cases/api";
 import {
   formatCameraName,
   formatCaseReference,
@@ -30,6 +35,7 @@ import type {
   EvidenceFrame,
 } from "../cases/types";
 import { CaseActionPanel } from "./CaseActionPanel";
+import { RectificationEvidenceGallery } from "./RectificationEvidenceGallery";
 
 interface CaseDetailPageProps {
   caseId: string;
@@ -60,7 +66,13 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [caseId, reloadToken]);
+  }, [actor?.actor_id, caseId, reloadToken]);
+
+  useEffect(() => {
+    const refreshLatestDetail = () => setReloadToken((value) => value + 1);
+    window.addEventListener("focus", refreshLatestDetail);
+    return () => window.removeEventListener("focus", refreshLatestDetail);
+  }, [caseId]);
 
   async function handleCommand(command: CaseCommand) {
     setSubmitting(true);
@@ -202,11 +214,7 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
                     ) : (
                       <div className="submitted-evidence">
                         <p>{submission.description}</p>
-                        {submission.evidence.map((evidence) => (
-                          <a key={evidence.evidence_id} href={evidence.image_url} target="_blank" rel="noreferrer">
-                            整改证据 · {formatLongDateTime(evidence.captured_at)}
-                          </a>
-                        ))}
+                        <RectificationEvidenceGallery evidence={submission.evidence} />
                       </div>
                     )}
                   </article>
@@ -238,7 +246,22 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
 
         <aside className="detail-action-column" aria-label="当前可执行操作">
           {commandNotice ? <div className={`command-notice command-notice--${commandNotice.tone}`} role="status">{commandNotice.text}</div> : null}
-          <CaseActionPanel detail={detail} actor={actor} context={context} submitting={submitting} onSubmit={handleCommand} />
+          <CaseActionPanel
+            detail={detail}
+            actor={actor}
+            context={context}
+            submitting={submitting}
+            onSubmit={handleCommand}
+            onUploadEvidence={(evidenceId, file) => {
+              if (!actor) throw new CaseApiError("当前角色不可上传整改图片。");
+              return uploadRectificationEvidenceImage(
+                caseId,
+                actor.actor_id,
+                evidenceId,
+                file,
+              );
+            }}
+          />
           <div className="detail-integrity-note">
             <span>数据保护</span>
             <p>操作成功后会重新加载最新案件；如果案件已被他人更新，系统不会覆盖对方结果。</p>

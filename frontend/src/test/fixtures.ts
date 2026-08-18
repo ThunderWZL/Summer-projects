@@ -2,6 +2,7 @@ import type {
   AnalysisSession,
   DemoContext,
   DemoVideo,
+  WorksiteConfigurations,
 } from "../shared/api";
 import type { AnalysisEvent } from "../shared/ws";
 
@@ -46,6 +47,7 @@ export const demoContext: DemoContext = {
   task_ppe_matrix: [
     {
       task_code: "GENERAL_WORK",
+      name: "一般作业",
       hazards: ["falling_objects"],
       required_ppe: ["helmet"],
       exception_note: null,
@@ -83,6 +85,28 @@ export const analysisSession: AnalysisSession = {
   stage: "STARTING",
   stream_url: "/api/v1/analysis-sessions/analysis-session-01/stream.mjpg",
   events_url: "/ws/v1/analysis-sessions/analysis-session-01/events",
+};
+
+export const worksiteConfigurations: WorksiteConfigurations = {
+  presets: [
+    {
+      preset_id: "MATERIAL_CUTTING",
+      name: "物料切割",
+      required_ppe: ["helmet", "gloves", "vest"],
+    },
+    {
+      preset_id: "CLIMBING_WORK",
+      name: "攀爬作业",
+      required_ppe: ["helmet", "gloves", "vest"],
+    },
+  ],
+  cameras: demoVideos.map((video) => ({
+    camera_id: video.camera_id,
+    mode: "PRESET",
+    preset_id: "MATERIAL_CUTTING",
+    name: "物料切割",
+    required_ppe: ["helmet", "gloves", "vest"],
+  })),
 };
 
 export function progressEvent(

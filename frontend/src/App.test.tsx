@@ -11,13 +11,24 @@ const observations = vi.hoisted(() => ({
 vi.mock("./features/monitor/MonitorPage", async () => {
   const { useEffect, useState } = await import("react");
   return {
-    MonitorPage: () => {
+    MonitorPage: ({
+      configurationOpen,
+      onCloseConfiguration,
+    }: {
+      configurationOpen: boolean;
+      onCloseConfiguration(): void;
+    }) => {
       const [running, setRunning] = useState(false);
       useEffect(() => observations.monitorMounts(), []);
       return (
         <section aria-label="监控台工作区">
           <button type="button" onClick={() => setRunning(true)}>启动监控</button>
           {running ? <span>监控运行中</span> : null}
+          {configurationOpen ? (
+            <section aria-label="场地配置已打开">
+              <button type="button" onClick={onCloseConfiguration}>关闭配置</button>
+            </section>
+          ) : null}
         </section>
       );
     },
@@ -71,12 +82,18 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "监控台" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("passes the selected top-level actor into the cases workspace", () => {
+  it("shows configuration on monitor and role selection only in cases", () => {
     render(<App />);
+    expect(screen.queryByRole("combobox", { name: "当前角色" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "配置" }));
+    expect(screen.getByRole("region", { name: "场地配置已打开" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "案件中心" }));
     fireEvent.change(screen.getByRole("combobox", { name: "当前角色" }), {
       target: { value: "reviewer-01" },
     });
 
     expect(screen.getByText("actor:reviewer-01")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "配置" })).toBeNull();
   });
 });

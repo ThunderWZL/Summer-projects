@@ -161,6 +161,7 @@ def test_one_inference_pass_drives_live_mjpeg_candidate_and_finish(tmp_path) -> 
             session_id="analysis-session-real",
             video_id="video-real",
             stage=AnalysisStage.STARTING,
+            started_at=datetime(2026, 8, 18, tzinfo=timezone.utc),
         )
         manager = _RecordingManager()
         stream_task = asyncio.create_task(_collect_stream(analysis, session.session_id))

@@ -68,6 +68,23 @@ def test_default_profile_resolves_board_and_climbing_tasks() -> None:
     assert climbing.exception_note
 
 
+def test_runtime_camera_configuration_controls_investigation_ppe() -> None:
+    context = MemorySiteContext()
+    context.configure_camera_worksite(
+        "CAM-03",
+        mode="CUSTOM",
+        name="临时木料检查区",
+        required_ppe=[PpeType.HELMET, PpeType.VEST],
+    )
+
+    resolved = DeterministicInvestigationResolver(context).resolve(
+        make_candidate("CAM-03")
+    )
+
+    assert resolved.required_ppe == [PpeType.HELMET, PpeType.VEST]
+    assert resolved.hazards == ["现场作业风险"]
+
+
 def test_same_resolver_input_is_deterministic() -> None:
     resolver = DeterministicInvestigationResolver(MemorySiteContext())
     candidate = make_candidate("CAM-03")

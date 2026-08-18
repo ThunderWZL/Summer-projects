@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -105,6 +105,7 @@ def facts_workflow_fixture() -> tuple[CasePipeline, InMemoryCaseStore, CaseWorkf
         workflow,
         vlm,
         FactsCompletingInvestigation(store),
+        lambda: NOW,
     )
     return pipeline, store, workflow
 
@@ -148,6 +149,31 @@ async def analyze(video_id: str):
             break
     await events.aclose()
     return received
+
+
+def test_new_demo_case_uses_system_time_and_current_permit() -> None:
+    started_before = datetime.now(timezone.utc)
+
+    async def scenario():
+        events = await analyze("video-no-vest-02")
+        created = next(
+            event
+            for event in events
+            if event.event_type.value == "CANDIDATE_CREATED"
+        )
+        snapshot = get_case_store().get(created.case_id)
+        assert snapshot is not None
+        return snapshot
+
+    snapshot = asyncio.run(scenario())
+    finished_after = datetime.now(timezone.utc)
+
+    assert started_before <= snapshot.created_at <= finished_after
+    assert snapshot.candidate.occurred_at.date() == snapshot.created_at.astimezone(
+        snapshot.candidate.occurred_at.tzinfo
+    ).date()
+    assert snapshot.investigation is not None
+    assert snapshot.investigation.facts["active_permit_ids"] == ["wp-0201"]
 
 
 def test_independent_facts_context_closes_through_public_commands_v1_to_v10() -> None:

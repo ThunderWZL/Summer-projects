@@ -3,7 +3,7 @@ from datetime import datetime
 from math import ceil
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import Response
 from pydantic import AwareDatetime, Field
 
@@ -13,10 +13,12 @@ from app.api.deps import (
     get_case_pipeline,
     get_case_workflow,
     get_clock,
+    get_evidence_store_port,
     get_site_context,
     get_user_directory,
 )
 from app.api.errors import error_response
+from app.api.schemas import RectificationImageUploadResponse
 from app.contracts import (
     ApproveClosure,
     ApproveRectification,
@@ -29,6 +31,7 @@ from app.contracts import (
     CaseStatus,
     CaseTimelineItem,
     CaseUrgency,
+    ActorRole,
     ErrorResponse,
     FactsSubmissionRecord,
     Pagination,
@@ -43,7 +46,13 @@ from app.contracts import (
     TimelineSource,
 )
 from app.domain.case_store import CaseQuery, CaseStorePort
-from app.domain.case_workflow import CaseWorkflow, PermissionDenied
+from app.domain.case_workflow import (
+    CaseNotFound,
+    CaseWorkflow,
+    CommandNotAllowed,
+    PermissionDenied,
+)
+from app.modules.video_analysis.evidence_store import FileEvidenceStore
 from app.services.case_pipeline import CasePipeline
 from app.domain.site_context import (
     ResponsibleParty,
@@ -54,6 +63,7 @@ from app.domain.site_context import (
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
+MAX_RECTIFICATION_IMAGE_BYTES = 5 * 1024 * 1024
 
 HIGH_RISK_ZONE_TYPES = {
     "SCAFFOLD",
@@ -435,6 +445,57 @@ def submit_rectification_evidence(
     )
     snapshot = workflow.apply(case_id, command, submission=submission)
     return CaseCommandResponse(snapshot=snapshot, version=snapshot.version)
+
+
+@router.post(
+    "/{case_id}/rectification-evidence/images/{evidence_id}",
+    response_model=RectificationImageUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=WORKFLOW_ERROR_RESPONSES,
+)
+async def upload_rectification_image(
+    case_id: str,
+    evidence_id: str,
+    request: Request,
+    actor_id: str = Query(min_length=1),
+    cases: CaseStorePort = Depends(get_case_store),
+    users: UserDirectoryPort = Depends(get_user_directory),
+    images: FileEvidenceStore = Depends(get_evidence_store_port),
+) -> RectificationImageUploadResponse | Response:
+    user = users.get(actor_id)
+    if (
+        user is None
+        or not user.active
+        or user.role is not ActorRole.SITE_SAFETY_OFFICER
+    ):
+        raise PermissionDenied(actor_id)
+    snapshot = cases.get(case_id)
+    if snapshot is None:
+        raise CaseNotFound(case_id)
+    if snapshot.status is not CaseStatus.RECTIFICATION_OPEN:
+        raise CommandNotAllowed("UPLOAD_RECTIFICATION_IMAGE", snapshot.status)
+
+    image_bytes = await request.body()
+    if len(image_bytes) > MAX_RECTIFICATION_IMAGE_BYTES:
+        return error_response(413, "IMAGE_TOO_LARGE", "image must not exceed 5 MB")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+    try:
+        image_url = images.store_rectification_image(
+            case_id=case_id,
+            evidence_id=evidence_id,
+            image_bytes=image_bytes,
+            media_type=media_type,
+        )
+    except ValueError:
+        return error_response(
+            422,
+            "INVALID_IMAGE",
+            "image must be a JPEG, PNG, or WebP file with valid content",
+        )
+    return RectificationImageUploadResponse(
+        evidence_id=evidence_id,
+        image_url=image_url,
+    )
 
 
 @router.post(

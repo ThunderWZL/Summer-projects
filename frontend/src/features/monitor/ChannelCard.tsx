@@ -1,14 +1,17 @@
-import type { DemoVideo } from "../../shared/api";
+import type {
+  CameraWorksiteConfiguration,
+  DemoVideo,
+} from "../../shared/api";
 import {
+  PPE_LABELS,
   formatCameraName,
   formatSceneTitle,
-  formatTaskLabel,
   formatZoneName,
 } from "../cases/format";
 
 interface ChannelCardProps {
   video: DemoVideo;
-  configuredTask: string;
+  worksiteConfiguration?: CameraWorksiteConfiguration;
   active: boolean;
   starting?: boolean;
   disabled?: boolean;
@@ -20,7 +23,7 @@ interface ChannelCardProps {
 
 export function ChannelCard({
   video,
-  configuredTask,
+  worksiteConfiguration,
   active,
   starting = false,
   disabled = false,
@@ -32,9 +35,13 @@ export function ChannelCard({
   const cameraName = formatCameraName(video.camera_id, video.camera_name);
   const zoneName = formatZoneName(video.zone_id, video.zone_name);
   const sceneTitle = formatSceneTitle(video.video_id, video.title);
-  const taskLabel = formatTaskLabel(configuredTask);
+  const worksiteName = worksiteConfiguration?.name ?? "场地待配置";
+  const requiredPpe = worksiteConfiguration?.required_ppe ?? [];
+  const ppeLabel = requiredPpe.length
+    ? requiredPpe.map((ppe) => PPE_LABELS[ppe]).join("、")
+    : "无需指定防护装备";
   const label = `${video.camera_id} ${cameraName}`;
-  const status = starting ? "启动中" : active ? "正在分析" : "未开始分析";
+  const status = starting ? "启动中" : active ? "正在分析" : "实时播放";
 
   return (
     <section
@@ -61,10 +68,12 @@ export function ChannelCard({
         ) : (
           <video
             src={video.content_url}
-            aria-label={`${video.camera_id} 演示预览`}
+            aria-label={`${video.camera_id} 实时画面`}
+            autoPlay
+            loop
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
           />
         )}
       </div>
@@ -72,7 +81,8 @@ export function ChannelCard({
       <footer>
         <div className="channel-context">
           <span title={sceneTitle}>{sceneTitle}</span>
-          <span>当前作业：{taskLabel}</span>
+          <span>当前场地：{worksiteName}</span>
+          <span>防护要求：{ppeLabel}</span>
           <span aria-live="polite">候选 {candidateCount}</span>
         </div>
         <button

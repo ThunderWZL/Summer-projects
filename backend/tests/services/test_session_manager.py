@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import pytest
 
@@ -19,6 +20,9 @@ from app.services.event_hub import EventHub
 from app.services.session_manager import SessionManager
 
 
+NOW = datetime.fromisoformat("2026-08-18T16:00:00+08:00")
+
+
 def _manager(started: asyncio.Queue[str] | None = None) -> SessionManager:
     async def stream(_session_id: str):
         yield b"frame"
@@ -34,6 +38,22 @@ def _manager(started: asyncio.Queue[str] | None = None) -> SessionManager:
         stream,
         run,
     )
+
+
+def test_new_session_records_the_injected_system_time() -> None:
+    async def scenario() -> AnalysisSession:
+        manager = SessionManager(
+            EventHub(),
+            lambda _video_id: object(),
+            lambda _session_id: None,
+            lambda _session, _manager: asyncio.sleep(0),
+            clock=lambda: NOW,
+        )
+        return await manager.start_session("video-01")
+
+    session = asyncio.run(scenario())
+
+    assert session.started_at == NOW
 
 
 async def _start_receive(iterator) -> asyncio.Task[AnalysisEvent]:

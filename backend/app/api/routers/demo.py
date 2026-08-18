@@ -5,15 +5,26 @@ from fastapi.responses import FileResponse, Response
 
 from app.api.deps import get_site_context, get_user_directory
 from app.api.errors import error_response
-from app.api.schemas import DemoContextResponse, DemoVideoItem
+from app.api.schemas import (
+    CameraWorksiteConfigurationRequest,
+    CustomWorksiteConfigurationRequest,
+    DemoContextResponse,
+    DemoVideoItem,
+    WorksiteConfigurationsResponse,
+)
+from app.contracts import ErrorResponse
 from app.domain.site_context import (
+    CameraNotFound,
     CameraInfo,
+    CameraWorksiteConfiguration,
     SiteContextPort,
     UserDirectoryPort,
+    WorksitePresetNotFound,
 )
 
 
 router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
+ERROR_RESPONSE_CONTENT = {"model": ErrorResponse}
 
 
 def _camera_name(zone_name: str) -> str:
@@ -104,3 +115,48 @@ def get_demo_context(
         responsible_parties=list(parties.values()),
         users=demo_users,
     )
+
+
+@router.get(
+    "/worksite-configurations",
+    response_model=WorksiteConfigurationsResponse,
+)
+def list_worksite_configurations(
+    context: SiteContextPort = Depends(get_site_context),
+) -> WorksiteConfigurationsResponse:
+    return WorksiteConfigurationsResponse(
+        presets=context.list_worksite_presets(),
+        cameras=context.list_camera_worksite_configurations(),
+    )
+
+
+@router.patch(
+    "/worksite-configurations/{camera_id}",
+    response_model=CameraWorksiteConfiguration,
+    responses={
+        404: {**ERROR_RESPONSE_CONTENT, "description": "监控通道不存在"},
+        422: {**ERROR_RESPONSE_CONTENT, "description": "场地配置无效"},
+    },
+)
+def configure_camera_worksite(
+    camera_id: str,
+    request: CameraWorksiteConfigurationRequest,
+    context: SiteContextPort = Depends(get_site_context),
+) -> CameraWorksiteConfiguration:
+    try:
+        if isinstance(request, CustomWorksiteConfigurationRequest):
+            return context.configure_camera_worksite(
+                camera_id,
+                mode="CUSTOM",
+                name=request.name,
+                required_ppe=request.required_ppe,
+            )
+        return context.configure_camera_worksite(
+            camera_id,
+            mode="PRESET",
+            preset_id=request.preset_id,
+        )
+    except CameraNotFound as error:
+        return error_response(404, error.code, str(error))
+    except WorksitePresetNotFound as error:
+        return error_response(422, error.code, str(error))

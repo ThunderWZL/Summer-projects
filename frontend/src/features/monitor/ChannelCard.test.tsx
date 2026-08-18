@@ -5,7 +5,7 @@ import { ChannelCard } from "./ChannelCard";
 import { demoVideos } from "../../test/fixtures";
 
 describe("ChannelCard", () => {
-  it("labels the channel, simulated context, preview, and start action", () => {
+  it("keeps the channel preview playing before analysis starts", () => {
     const onStart = vi.fn();
     const video = {
       ...demoVideos[0],
@@ -17,7 +17,13 @@ describe("ChannelCard", () => {
     render(
       <ChannelCard
         video={video}
-        configuredTask="MATERIAL_CUTTING"
+        worksiteConfiguration={{
+          camera_id: "CAM-01",
+          mode: "PRESET",
+          preset_id: "MATERIAL_CUTTING",
+          name: "物料切割",
+          required_ppe: ["helmet", "gloves", "vest"],
+        }}
         active={false}
         candidateCount={0}
         onStart={onStart}
@@ -30,9 +36,18 @@ describe("ChannelCard", () => {
     ).toBeTruthy();
     expect(screen.getByText("切割作业区 A")).toBeTruthy();
     expect(screen.getByText("物料切割｜防护齐全")).toBeTruthy();
-    expect(screen.getByText(/当前作业.*物料切割/)).toBeTruthy();
+    expect(screen.getByText(/当前场地.*物料切割/)).toBeTruthy();
+    expect(
+      screen.getByText(/防护要求.*安全帽.*防护手套.*安全背心/),
+    ).toBeTruthy();
     expect(screen.queryByText(/安全1|MATERIAL_CUTTING/)).toBeNull();
-    expect(screen.getByText("未开始分析")).toBeTruthy();
+    expect(screen.getByText("实时播放")).toBeTruthy();
+    const preview = screen.getByLabelText("CAM-01 实时画面");
+    expect(preview).toBeInstanceOf(HTMLVideoElement);
+    expect((preview as HTMLVideoElement).autoplay).toBe(true);
+    expect((preview as HTMLVideoElement).loop).toBe(true);
+    expect((preview as HTMLVideoElement).muted).toBe(true);
+    expect((preview as HTMLVideoElement).playsInline).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "开始分析 CAM-01" }));
     expect(onStart).toHaveBeenCalledWith(video);
@@ -43,7 +58,13 @@ describe("ChannelCard", () => {
     render(
       <ChannelCard
         video={demoVideos[0]}
-        configuredTask="GENERAL_WORK"
+        worksiteConfiguration={{
+          camera_id: "CAM-01",
+          mode: "CUSTOM",
+          preset_id: null,
+          name: "临时检查区",
+          required_ppe: ["helmet", "vest"],
+        }}
         active
         streamUrl="/api/v1/analysis-sessions/analysis-session-01/stream.mjpg"
         candidateCount={3}

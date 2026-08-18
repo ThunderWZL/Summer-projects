@@ -12,7 +12,10 @@ from app.contracts import (
 )
 from app.domain.inmemory.fixture_candidates import candidates_for_video
 from app.domain.site_context import SiteContextPort
-from app.domain.video_analysis import AnalysisSession
+from app.domain.video_analysis import (
+    AnalysisSession,
+    scenario_started_at_on_analysis_date,
+)
 from app.services.session_manager import SessionManager
 from app.services.case_pipeline import CasePipeline
 
@@ -79,7 +82,14 @@ class InMemoryVideoAnalysis:
             inference_fps=12.0,
         )
         await asyncio.sleep(1.0)
-        candidates = candidates_for_video(video, session.session_id)
+        candidates = candidates_for_video(
+            video,
+            session.session_id,
+            scene_started_at=scenario_started_at_on_analysis_date(
+                video.scenario_started_at,
+                session.started_at,
+            ),
+        )
         case_ids: set[str] = set()
         for candidate in candidates:
             case = self._pipeline.ensure_case(candidate)

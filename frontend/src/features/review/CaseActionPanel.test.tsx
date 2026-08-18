@@ -80,6 +80,7 @@ describe("CaseActionPanel", () => {
         context={demoContext}
         submitting={false}
         onSubmit={onSubmit}
+        onUploadEvidence={vi.fn()}
       />,
     );
     fireEvent.change(screen.getByLabelText("现场补充说明"), {
@@ -107,6 +108,7 @@ describe("CaseActionPanel", () => {
         context={demoContext}
         submitting={false}
         onSubmit={vi.fn()}
+        onUploadEvidence={vi.fn()}
       />,
     );
 
@@ -122,6 +124,7 @@ describe("CaseActionPanel", () => {
         context={demoContext}
         submitting={false}
         onSubmit={vi.fn()}
+        onUploadEvidence={vi.fn()}
       />,
     );
 
@@ -139,6 +142,7 @@ describe("CaseActionPanel", () => {
         context={demoContext}
         submitting={false}
         onSubmit={vi.fn()}
+        onUploadEvidence={vi.fn()}
       />,
     );
 
@@ -147,5 +151,92 @@ describe("CaseActionPanel", () => {
     expect(screen.queryByText(/PENDING_REVIEW/)).toBeNull();
     expect(screen.queryByRole("button", { name: "批准整改" })).toBeNull();
     expect(screen.queryByRole("button", { name: "驳回事件" })).toBeNull();
+  });
+
+  it("uploads the selected image before submitting rectification evidence", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onUploadEvidence = vi.fn().mockResolvedValue(
+      "/evidence/rectification/case-action/manual-uploaded",
+    );
+    render(
+      <CaseActionPanel
+        detail={makeDetail("RECTIFICATION_OPEN", "gloves", ["gloves"])}
+        actor={officer}
+        context={demoContext}
+        submitting={false}
+        onSubmit={onSubmit}
+        onUploadEvidence={onUploadEvidence}
+      />,
+    );
+    const image = new File(["image"], "rectified.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("证据图片"), {
+      target: { files: [image] },
+    });
+    fireEvent.change(screen.getByLabelText("拍摄时间"), {
+      target: { value: "2026-08-17T21:30" },
+    });
+    fireEvent.change(screen.getByLabelText("整改说明"), {
+      target: { value: "已为工人补发并正确佩戴防护手套" },
+    });
+    fireEvent.change(screen.getByLabelText("操作理由"), {
+      target: { value: "现场整改完成" },
+    });
+    fireEvent.submit(
+      screen.getByRole("button", { name: "提交并进入复查" }).closest("form")!,
+    );
+
+    await waitFor(() => expect(onUploadEvidence).toHaveBeenCalledWith(
+      expect.stringMatching(/^manual-/),
+      image,
+    ));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      command_type: "SUBMIT_RECTIFICATION_EVIDENCE",
+      description: "已为工人补发并正确佩戴防护手套",
+      evidence: [expect.objectContaining({
+        image_url: "/evidence/rectification/case-action/manual-uploaded",
+      })],
+    })));
+  });
+
+  it("shows the submitted description and image next to the reviewer recheck form", () => {
+    const detail = makeDetail("RECHECK_PENDING", "gloves", ["gloves"]);
+    detail.snapshot.rectification_description = "已为工人补发并正确佩戴防护手套";
+    detail.snapshot.rectification_evidence = [{
+      evidence_id: "manual-01",
+      image_url: "/evidence/rectification/case-action/manual-01",
+      captured_at: "2026-08-17T21:30:00+08:00",
+      note: "整改完成后现场照片",
+    }];
+    detail.human_submissions = [{
+      submission_id: "submission-case-action-8",
+      submission_type: "RECTIFICATION_EVIDENCE",
+      case_id: "case-action",
+      actor_id: "officer-01",
+      actor_name: "现场安全员",
+      actor_role: "SITE_SAFETY_OFFICER",
+      reason: "现场确认整改完成",
+      description: "已为工人补发并正确佩戴防护手套",
+      evidence: detail.snapshot.rectification_evidence,
+      created_at: "2026-08-17T21:35:00+08:00",
+    }];
+
+    render(
+      <CaseActionPanel
+        detail={detail}
+        actor={reviewer}
+        context={demoContext}
+        submitting={false}
+        onSubmit={vi.fn()}
+        onUploadEvidence={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("已为工人补发并正确佩戴防护手套")).toBeTruthy();
+    expect(screen.getByText(/现场安全员 · 2026\/08\/17 21:35:00/)).toBeTruthy();
+    expect(screen.getByText("提交理由：现场确认整改完成")).toBeTruthy();
+    const evidence = screen.getByRole("img", { name: "整改完成后现场照片" });
+    expect(evidence.getAttribute("src")).toBe(
+      "/evidence/rectification/case-action/manual-01",
+    );
   });
 });

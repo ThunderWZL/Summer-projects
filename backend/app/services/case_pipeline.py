@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from datetime import datetime
+
 from app.contracts import (
     CandidateEvidence,
     CaseSnapshot,
@@ -23,16 +26,19 @@ class CasePipeline:
         workflow: CaseWorkflow,
         vlm: VlmReviewService,
         investigation: InvestigationPort,
+        clock: Callable[[], datetime],
     ) -> None:
         self._store = store
         self._workflow = workflow
         self._vlm = vlm
         self._investigation = investigation
+        self._clock = clock
 
     def ensure_case(self, candidate: CandidateEvidence) -> CaseSnapshot:
         existing = self._store.find_by_candidate(candidate.candidate_id)
         if existing is not None:
             return existing
+        created_at = self._clock()
         snapshot = CaseSnapshot(
             case_id=f"case-{candidate.candidate_id}",
             session_id=candidate.session_id,
@@ -42,8 +48,8 @@ class CasePipeline:
             status=CaseStatus.YOLO_CANDIDATE,
             version=1,
             candidate=candidate,
-            created_at=candidate.occurred_at,
-            updated_at=candidate.occurred_at,
+            created_at=created_at,
+            updated_at=created_at,
         )
         return self._store.create(snapshot)
 

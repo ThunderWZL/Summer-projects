@@ -1,9 +1,9 @@
 {
   "tasks": [
-    {"task_code": "MATERIAL_CUTTING", "hazards": ["切割飞溅", "物料划伤"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 60},
-    {"task_code": "GENERAL_SITE_ACTIVITY", "hazards": ["现场交叉作业"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 60},
-    {"task_code": "BOARD_FASTENING", "hazards": ["木刺", "钉装伤害"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 30},
-    {"task_code": "CLIMBING_WORK", "hazards": ["高处坠落", "物体打击"], "required_ppe": ["helmet", "gloves", "vest"], "exception_note": "视频中的其他穿戴不计作高可视安全背心", "rectification_window_minutes": 30},
-    {"task_code": "TIMBER_ASSEMBLY", "hazards": ["木料碰撞", "手部伤害"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 30}
+    {"task_code": "MATERIAL_CUTTING", "name": "物料切割", "hazards": ["切割飞溅", "物料划伤"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 60},
+    {"task_code": "GENERAL_SITE_ACTIVITY", "name": "综合现场作业", "hazards": ["现场交叉作业"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 60},
+    {"task_code": "BOARD_FASTENING", "name": "木板装订", "hazards": ["木刺", "钉装伤害"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 30},
+    {"task_code": "CLIMBING_WORK", "name": "攀爬作业", "hazards": ["高处坠落", "物体打击"], "required_ppe": ["helmet", "gloves", "vest"], "exception_note": "视频中的其他穿戴不计作高可视安全背心", "rectification_window_minutes": 30},
+    {"task_code": "TIMBER_ASSEMBLY", "name": "木料组装", "hazards": ["木料碰撞", "手部伤害"], "required_ppe": ["helmet", "gloves", "vest"], "rectification_window_minutes": 30}
   ]
 }

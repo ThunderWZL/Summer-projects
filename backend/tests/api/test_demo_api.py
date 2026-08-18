@@ -2,6 +2,8 @@ import asyncio
 
 from httpx import ASGITransport, AsyncClient
 
+from app.api.deps import get_site_context
+from app.domain.inmemory.site_context import MemorySiteContext
 from app.main import app
 
 
@@ -11,6 +13,24 @@ async def get(path: str):
         base_url="http://test",
     ) as client:
         return await client.get(path)
+
+
+async def request_with_context(
+    method: str,
+    path: str,
+    *,
+    context: MemorySiteContext,
+    json: dict[str, object] | None = None,
+):
+    app.dependency_overrides[get_site_context] = lambda: context
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            return await client.request(method, path, json=json)
+    finally:
+        app.dependency_overrides.pop(get_site_context, None)
 
 
 def test_demo_videos_expose_six_traceable_channels() -> None:
@@ -63,3 +83,82 @@ def test_unknown_demo_video_returns_stable_error_body() -> None:
         "message": "demo video video-99 was not found",
         "current_version": None,
     }
+
+
+def test_worksite_configurations_expose_labels_instead_of_internal_task_codes() -> None:
+    response = asyncio.run(
+        request_with_context(
+            "GET",
+            "/api/v1/demo/worksite-configurations",
+            context=MemorySiteContext(),
+        )
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["cameras"]) == 6
+    assert body["cameras"][0] == {
+        "camera_id": "CAM-01",
+        "mode": "PRESET",
+        "preset_id": "MATERIAL_CUTTING",
+        "name": "物料切割",
+        "required_ppe": ["helmet", "gloves", "vest"],
+    }
+    assert body["presets"][0]["name"] == "物料切割"
+    assert "task_code" not in response.text
+
+
+def test_camera_accepts_a_custom_runtime_worksite_configuration() -> None:
+    context = MemorySiteContext()
+    response = asyncio.run(
+        request_with_context(
+            "PATCH",
+            "/api/v1/demo/worksite-configurations/CAM-04",
+            context=context,
+            json={
+                "mode": "CUSTOM",
+                "name": "临时高处检修区",
+                "required_ppe": ["helmet", "vest"],
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "camera_id": "CAM-04",
+        "mode": "CUSTOM",
+        "preset_id": None,
+        "name": "临时高处检修区",
+        "required_ppe": ["helmet", "vest"],
+    }
+    configured = context.get_camera_worksite_configuration("CAM-04")
+    assert configured is not None
+    assert configured.name == "临时高处检修区"
+
+
+def test_camera_configuration_rejects_non_demo_ppe_and_unknown_camera() -> None:
+    context = MemorySiteContext()
+    invalid_ppe = asyncio.run(
+        request_with_context(
+            "PATCH",
+            "/api/v1/demo/worksite-configurations/CAM-01",
+            context=context,
+            json={
+                "mode": "CUSTOM",
+                "name": "测试区域",
+                "required_ppe": ["boots"],
+            },
+        )
+    )
+    missing_camera = asyncio.run(
+        request_with_context(
+            "PATCH",
+            "/api/v1/demo/worksite-configurations/CAM-99",
+            context=context,
+            json={"mode": "PRESET", "preset_id": "MATERIAL_CUTTING"},
+        )
+    )
+
+    assert invalid_ppe.status_code == 422
+    assert missing_camera.status_code == 404
+    assert missing_camera.json()["code"] == "CAMERA_NOT_FOUND"
