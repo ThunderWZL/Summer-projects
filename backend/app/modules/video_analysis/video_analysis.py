@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from app.contracts import (
     AnalysisStage,
     CandidateCreatedPayload,
+    CaseSnapshot,
     CaseStatus,
     CaseUpdatedPayload,
     VlmReviewedPayload,
@@ -292,32 +293,45 @@ class VisionVideoAnalysis:
             ),
             playback_ms=candidate.last_seen_ms,
         )
-        result = await self._pipeline.process_candidate(candidate)
-        if is_new_candidate and result.vlm_review is not None:
-            await manager.publish_vlm_reviewed(
-                session_id,
-                case_id=result.case_id,
-                payload=VlmReviewedPayload(
-                    verdict=result.vlm_review.verdict,
-                    evidence_sufficient=result.vlm_review.evidence_sufficient,
-                    reason=result.vlm_review.reason,
-                    status=result.transitions[0].to_status,
-                    version=2,
-                ),
-                playback_ms=candidate.last_seen_ms,
-            )
-            for version, transition in enumerate(result.transitions[1:], start=3):
-                await manager.publish_case_updated(
+
+        async def publish_transition(snapshot: CaseSnapshot) -> None:
+            transition = snapshot.transitions[-1]
+            if transition.to_status in {
+                CaseStatus.VLM_REVIEWED,
+                CaseStatus.VLM_REJECTED,
+            }:
+                review = snapshot.vlm_review
+                if review is None:
+                    return
+                await manager.publish_vlm_reviewed(
                     session_id,
-                    case_id=result.case_id,
-                    payload=CaseUpdatedPayload(
+                    case_id=snapshot.case_id,
+                    payload=VlmReviewedPayload(
+                        verdict=review.verdict,
+                        evidence_sufficient=review.evidence_sufficient,
+                        reason=review.reason,
                         status=transition.to_status,
-                        version=version,
-                        updated_at=transition.occurred_at,
-                        action=_PIPELINE_ACTIONS[transition.to_status],
+                        version=snapshot.version,
                     ),
                     playback_ms=candidate.last_seen_ms,
                 )
+                return
+            await manager.publish_case_updated(
+                session_id,
+                case_id=snapshot.case_id,
+                payload=CaseUpdatedPayload(
+                    status=transition.to_status,
+                    version=snapshot.version,
+                    updated_at=transition.occurred_at,
+                    action=_PIPELINE_ACTIONS[transition.to_status],
+                ),
+                playback_ms=candidate.last_seen_ms,
+            )
+
+        result = await self._pipeline.process_candidate(
+            candidate,
+            on_transition=publish_transition if is_new_candidate else None,
+        )
         return result.case_id
 
     def _state(self, session_id: str) -> _SessionState:

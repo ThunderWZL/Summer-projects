@@ -638,3 +638,24 @@
 
 * 在演示浏览器中确认六路视频同时循环播放，并点击任一路验证仅该路切换为分析标注流。
 * 在 `dev` 集成环境新建一个案件，确认列表与详情显示当前系统日期；历史案件保留原始时间不回填。
+
+## 2026-08-19
+
+### 当日目标
+
+* 修复语义复核通过后案件迟迟不显示 Agent/RAG 调查过程的问题。
+
+### 开发记录
+
+* 01:49 `fix(investigation): 实时发布调查状态`
+  * 完成：VLM 复核通过后立即持久化并向前端发布系统调查中状态，Agent/RAG 完成后继续发布最终人工处理状态；调查异常时保留可见、可重试的调查状态。
+  * 实现：案件管线在调用同步调查 Agent 前提交 `START_INVESTIGATION`，通过异步观察器逐次发布 VLM、调查开始和调查完成状态，并将同步 Agent/RAG 调用移至工作线程，避免阻塞分析事件循环。
+  * 验证：`cd backend && .venv/bin/pytest -q tests/services/test_case_pipeline.py tests/modules/video_analysis/test_video_analysis.py tests/services/test_session_manager.py`，24 项通过；`cd backend && .venv/bin/pytest -q`，392 项通过、1 项跳过、1 项既有时区边界断言失败；在未修改的 `dev` 基线独立重跑该失败测试，结果相同；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-investigation-progress-build`，构建成功；`cd backend && pip3 --python .venv/bin/python check`，依赖完整；`cd frontend && npm test -- --run`，14 个测试文件共 59 项通过；`cd frontend && npm run build`，类型检查与生产构建通过；项目未配置独立 lint。
+
+### 问题与处理
+
+* 完整后端测试中的系统时间用例在北京时间跨日、UTC 尚未跨日时比较了两个 UTC 日期并失败；该问题已在未修改的 `dev` 基线复现，确认不是本次调查状态修复引入，本次未改动时间逻辑。
+
+### 后续计划
+
+* 在 `dev` 演示环境触发一条 VLM 确认违规案件，确认案件中心先显示系统调查中，再进入对应人工处理分类。
