@@ -40,7 +40,16 @@ const detail: CaseDetailResponse = {
       occurred_at: "2026-08-07T09:00:02+08:00",
       first_seen_ms: 1767,
       last_seen_ms: 2133,
-      frames: [],
+      frames: [{
+        timestamp_ms: 2000,
+        image_url: "/api/evidence/candidate-01/representative.jpg",
+        image_width: 1280,
+        image_height: 720,
+        frame_role: "REPRESENTATIVE",
+        person_box: { x1: 100, y1: 80, x2: 500, y2: 700 },
+        observation_box: { x1: 160, y1: 300, x2: 420, y2: 620 },
+        observation_confidence: 0.82,
+      }],
     },
     vlm_review: {
       candidate_id: "candidate-01",
@@ -154,6 +163,20 @@ describe("CaseDetailPage display copy", () => {
     expect(screen.getByText("系统自动处理")).toBeTruthy();
 
     expect(screen.queryByText(/TIMBER_ASSEMBLY|task_code|openai_compat|qwen3\.6|team-carpentry-02|actor null|无防护/)).toBeNull();
+  });
+
+  it("does not present YOLO confidence as an equipment confidence", async () => {
+    render(
+      <CaseDetailPage
+        caseId={detail.snapshot.case_id}
+        actor={null}
+        context={demoContext}
+        onBack={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "木料组装区人员未佩戴防护手套" });
+    expect(screen.queryByText(/候选置信度|观测置信度/)).toBeNull();
   });
 
   it("reloads the case detail when the reviewer returns to the page", async () => {

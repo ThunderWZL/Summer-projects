@@ -556,6 +556,7 @@
 * 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
 * 修复新建案件固定显示 8 月 7 日的问题，使候选与案件创建时间遵从系统时间。
 * 降低安全帽漏报，使连续未检测到安全帽的人员进入 VLM 复核。
+* 移除前端对 YOLO 候选置信度的展示，避免将其误解为装备本身的置信度。
 
 ### 开发记录
 
@@ -595,6 +596,10 @@
   * 完成：可评估人员连续未检测到安全帽时生成缺失正类关联候选并进入 VLM 复核，同时保留连续 `no_helmet` 检测形成强负类证据的原有路径。
   * 实现：安全帽采用与手套、背心一致的连续缺失聚合；全序列均有合格 `no_helmet` 时保存检测框及其置信度，纯缺失或混合序列使用人员置信度并生成无装备框的三帧证据；检测到 `helmet` 会重置缺失序列。
   * 验证：`cd backend && .venv/bin/python -m pytest -q tests/modules/video_analysis tests/modules/vlm_review tests/services/test_case_pipeline.py tests/services/test_session_manager.py`，105 项通过；`cd backend && .venv/bin/python -m pytest -q`，391 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-helmet-missing.dSMZta`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，前端未修改，未运行前端检查。
+* 20:14 `fix(frontend): 移除YOLO置信度展示`
+  * 完成：事件详情不再展示候选置信度，关键证据帧不再展示观测置信度，避免将 YOLO 检测分数解释为装备本身的可信程度。
+  * 实现：保留候选与证据帧的置信度数据契约，仅删除前端可见条目，并将事件摘要和证据说明布局调整为删除后的项目数量。
+  * 验证：`cd frontend && npm test -- src/features/review/CaseDetailPage.test.tsx`，3 项通过；`cd frontend && npm test`，13 个测试文件共 57 项通过；`cd frontend && npm run build`，类型检查与生产构建通过；`git diff --check`，通过；项目未配置独立 lint，未运行。
 
 ### 问题与处理
 
