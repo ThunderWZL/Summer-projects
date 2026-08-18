@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     vlm_api_base_url: str | None = None
     vlm_api_key: str | None = None
     vlm_model: str = "fixed-reviewer"
-    vlm_timeout_seconds: float = 30.0
+    vlm_timeout_seconds: float = 90.0
     vlm_max_frames: int = 8
     vlm_max_image_edge: int = 1280
     vlm_max_output_tokens: int = 512

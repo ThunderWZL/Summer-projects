@@ -28,7 +28,7 @@ def test_defaults_are_used_without_vlm_env(monkeypatch) -> None:
     assert settings.vlm_model == "fixed-reviewer"
     assert settings.vlm_api_base_url is None
     assert settings.vlm_api_key is None
-    assert settings.vlm_timeout_seconds == 30.0
+    assert settings.vlm_timeout_seconds == 90.0
     assert settings.vlm_max_frames == 8
     assert settings.vlm_max_image_edge == 1280
     assert settings.vlm_max_output_tokens == 512
