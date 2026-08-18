@@ -31,7 +31,7 @@ def test_defaults_are_used_without_vlm_env(monkeypatch) -> None:
     assert settings.vlm_timeout_seconds == 90.0
     assert settings.vlm_max_frames == 8
     assert settings.vlm_max_image_edge == 1280
-    assert settings.vlm_max_output_tokens == 512
+    assert settings.vlm_max_output_tokens == 2048
     assert settings.vlm_max_retries == 2
     assert settings.vlm_retry_delay_seconds == 0.5
 

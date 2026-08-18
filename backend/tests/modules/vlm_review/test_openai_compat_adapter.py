@@ -120,7 +120,10 @@ def test_complete_sends_local_evidence_as_bounded_base64_images(tmp_path) -> Non
     assert call["model"] == "qwen3.6-27b"
     assert call["response_format"] == {"type": "json_object"}
     assert call["max_tokens"] == 512
-    assert call["extra_body"] == {"enable_thinking": True}
+    assert call["extra_body"] == {
+        "enable_thinking": True,
+        "thinking_budget": 1024,
+    }
     messages = call["messages"]
     assert messages[0]["content"].endswith("只输出 JSON。")
     user_content = messages[1]["content"]
