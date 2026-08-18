@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  getWorksiteConfigurations,
   getDemoContext,
   listDemoVideos,
   startAnalysisSession,
+  updateCameraWorksite,
 } from "./api";
 import { analysisSession, demoContext, demoVideos } from "../test/fixtures";
 
@@ -44,6 +46,55 @@ describe("monitor REST client", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(JSON.parse(String(init?.body))).toEqual({ video_id: "video-01" });
+  });
+
+  it("loads and updates user-facing worksite configurations", async () => {
+    const configurations = {
+      presets: [
+        {
+          preset_id: "MATERIAL_CUTTING",
+          name: "物料切割",
+          required_ppe: ["helmet", "gloves", "vest"],
+        },
+      ],
+      cameras: [
+        {
+          camera_id: "CAM-01",
+          mode: "PRESET",
+          preset_id: "MATERIAL_CUTTING",
+          name: "物料切割",
+          required_ppe: ["helmet", "gloves", "vest"],
+        },
+      ],
+    };
+    const updated = {
+      camera_id: "CAM-01",
+      mode: "CUSTOM",
+      preset_id: null,
+      name: "临时检修区",
+      required_ppe: ["helmet", "vest"],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(configurations))
+      .mockResolvedValueOnce(jsonResponse(updated));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorksiteConfigurations()).resolves.toEqual(configurations);
+    await expect(
+      updateCameraWorksite("CAM-01", {
+        mode: "CUSTOM",
+        name: "临时检修区",
+        required_ppe: ["helmet", "vest"],
+      }),
+    ).resolves.toEqual(updated);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/v1/demo/worksite-configurations/CAM-01",
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+    });
   });
 
   it("maps every JSON failure through the frozen ErrorResponse", async () => {

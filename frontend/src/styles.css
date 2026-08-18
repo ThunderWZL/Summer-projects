@@ -314,6 +314,144 @@ button:disabled {
   color: var(--muted);
 }
 
+.worksite-dialog {
+  width: min(960px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 20px;
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.4);
+}
+
+.worksite-dialog__header,
+.worksite-editor__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.worksite-dialog__header p,
+.worksite-editor__title span {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.worksite-dialog__header h2 {
+  margin: 4px 0 0;
+}
+
+.worksite-dialog__header > button {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: transparent;
+}
+
+.worksite-dialog__hint {
+  margin: 12px 0 16px;
+  color: var(--muted);
+}
+
+.worksite-dialog__notice {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.worksite-dialog__body {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.5fr);
+  gap: 16px;
+}
+
+.worksite-camera-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.worksite-camera-list button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+
+.worksite-camera-list button.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.worksite-camera-list span,
+.worksite-camera-list small,
+.worksite-editor small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worksite-editor {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.worksite-editor__title > div {
+  display: grid;
+}
+
+.worksite-editor select,
+.worksite-editor input[type="text"],
+.worksite-editor input:not([type]) {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  font: inherit;
+}
+
+.worksite-editor fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.worksite-editor fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worksite-editor__preset {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--accent-soft);
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -361,6 +499,19 @@ button:disabled {
   .monitor-alert {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .worksite-dialog {
+    max-height: calc(100dvh - 24px);
+    padding: 14px;
+  }
+
+  .worksite-dialog__body {
+    grid-template-columns: 1fr;
+  }
+
+  .worksite-camera-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

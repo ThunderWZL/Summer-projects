@@ -569,6 +569,10 @@
   * 完成：新增六路 CAM 场地配置读取与更新接口，支持选择中文预制场地或自定义场地名称及安全帽、手套、安全背心要求；配置仅保存在当前服务内存中。
   * 实现：运行期上下文原子更新对应 CAM 的作业许可与 PPE 矩阵，调查解析器继续通过原有接口读取最新规则；接口通过区分预制与自定义的请求结构限制输入，不向前端暴露内部任务代码。
   * 验证：`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/domain/test_site_context.py tests/domain/test_resolver.py tests/api/test_demo_api.py -q`，39 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-camera-rules-backend`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 13:08 `feat(frontend): 增加场地配置表单`
+  * 完成：新增六路 CAM 场地配置弹窗，可选择中文预制场地，或填写自定义场地名称并勾选安全帽、防护手套和安全背心要求；分析期间表单不可保存。
+  * 实现：增加类型化场地配置读取与更新客户端；通道列表和编辑表单分离，使用现有监控台颜色、间距与响应式布局，并提供键盘可访问的原生表单控件及明确的保存状态。
+  * 验证：`cd frontend && npm test -- --run src/features/monitor/WorksiteConfigurationDialog.test.tsx src/shared/api.test.ts`，2 个测试文件共 7 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
 
 ### 问题与处理
 

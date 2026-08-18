@@ -46,6 +46,7 @@ export const demoContext: DemoContext = {
   task_ppe_matrix: [
     {
       task_code: "GENERAL_WORK",
+      name: "一般作业",
       hazards: ["falling_objects"],
       required_ppe: ["helmet"],
       exception_note: null,
