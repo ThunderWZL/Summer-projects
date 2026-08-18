@@ -1,16 +1,23 @@
 """Force deterministic/offline adapters in the test suite.
 
 ``.env`` may carry real credentials (DEEPSEEK_API_KEY, EMBEDDING_API_KEY, …).
-pydantic-settings reads the ``.env`` file after environment variables, so a bare
-``delenv`` in a test still leaves the file value visible. Overriding with empty
-strings keeps the runtime on its deterministic fallbacks and keeps tests offline.
+Tests disable dotenv loading and clear integration keys so local configuration
+cannot select paid providers or change configuration assertions.
 """
 
+import asyncio
 import os
 
 import pytest
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+
+try:
+    import uvloop
+except ImportError:  # pragma: no cover - uvloop is unavailable on Windows
+    uvloop = None
+else:
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 _OFFLINE_KEYS = (
     "DEEPSEEK_API_KEY",
@@ -23,9 +30,12 @@ _OFFLINE_KEYS = (
 
 @pytest.fixture(autouse=True, scope="session")
 def _force_offline_ai_adapters() -> None:
+    original_env_file = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
     for key in _OFFLINE_KEYS:
         os.environ[key] = ""
     os.environ["VLM_PROVIDER"] = "fixed"
     os.environ["VISION_PROVIDER"] = "fixture"
     get_settings.cache_clear()
     yield
+    Settings.model_config["env_file"] = original_env_file

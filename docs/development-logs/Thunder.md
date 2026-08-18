@@ -586,13 +586,17 @@
   * 完成：新分析会话产生的候选发生时间和案件创建时间不再继承固定的 2026 年 8 月 7 日；真实 YOLO 与 fixture 路径使用同一系统时间语义。
   * 实现：分析会话记录带时区的启动时间，候选以会话启动时间叠加视频位置，案件通过注入时钟记录实际创建时间；演示作业许可证按事件日期重建当天 08:00—18:00 时间窗，保持 resolver 规则有效。
   * 验证：`cd backend && env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/services/test_case_pipeline.py tests/services/test_session_manager.py tests/services/test_session_manager_sql_persistence.py tests/modules/video_analysis/test_runtime.py tests/modules/video_analysis/test_video_analysis.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py`，49 项通过；`cd backend && timeout 15s env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/integration/test_end_to_end.py::test_new_demo_case_uses_system_time_and_current_permit`，1 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-build-29baXn`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 18:49 `fix(events): 修复系统时间边界与测试阻塞`
+  * 完成：修复晚于 18:00 分析演示视频时作业许可证失效的问题，并解除后端 ASGI 测试在同步依赖处的阻塞。
+  * 实现：案件创建时间继续使用系统当前时间，候选发生时间保留录制场景时刻并同步到分析当天；测试入口在支持的平台使用项目已有 uvloop，并禁止本地 `.env` 改写离线测试配置。
+  * 验证：`cd backend && .venv/bin/pytest -q`，388 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-final-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
 * 当前环境未提供可用的浏览器调试接口，未执行真实浏览器播放验收；已通过组件测试校验自动播放、循环、静音与内联播放属性。
 * 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
 * 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
-* 原有 `test_independent_facts_context_closes_through_public_commands_v1_to_v10` 在当前环境的第二次 ASGI 请求处等待 AnyIO 工作线程，单独运行仍可复现；本次未修改该既有测试，以 49 项受影响模块测试和新增系统时间端到端回归作为提交门禁。
+* ASGI 同步依赖测试阻塞可在未修改的 `origin/dev` 基线上复现，排除系统时间功能引入；测试入口启用项目已有 uvloop 后完整后端测试通过。
 
 ### 后续计划
 

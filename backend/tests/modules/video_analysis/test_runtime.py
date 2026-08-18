@@ -29,7 +29,7 @@ def test_real_provider_requires_existing_model_weights(tmp_path) -> None:
         build_vision_video_analysis(settings, object(), object())
 
 
-def test_real_provider_anchors_candidate_time_to_analysis_start(tmp_path) -> None:
+def test_real_provider_preserves_scenario_time_on_analysis_date(tmp_path) -> None:
     weights = tmp_path / "best.pt"
     weights.write_bytes(b"test-weights")
     settings = Settings(
@@ -55,4 +55,6 @@ def test_real_provider_anchors_candidate_time_to_analysis_start(tmp_path) -> Non
         video,
     )
 
-    assert aggregator.scene_started_at == analysis_started_at
+    assert aggregator.scene_started_at == datetime.fromisoformat(
+        "2026-08-18T09:00:00+08:00"
+    )

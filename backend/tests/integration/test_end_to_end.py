@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -169,9 +169,9 @@ def test_new_demo_case_uses_system_time_and_current_permit() -> None:
     finished_after = datetime.now(timezone.utc)
 
     assert started_before <= snapshot.created_at <= finished_after
-    assert timedelta(0) <= (
-        snapshot.candidate.occurred_at - snapshot.created_at
-    ) <= timedelta(minutes=10)
+    assert snapshot.candidate.occurred_at.date() == snapshot.created_at.astimezone(
+        snapshot.candidate.occurred_at.tzinfo
+    ).date()
     assert snapshot.investigation is not None
     assert snapshot.investigation.facts["active_permit_ids"] == ["wp-0201"]
 

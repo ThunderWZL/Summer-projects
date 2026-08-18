@@ -49,6 +49,20 @@ class AnalysisSession:
     started_at: datetime
 
 
+def scenario_started_at_on_analysis_date(
+    scenario_started_at: datetime,
+    analysis_started_at: datetime,
+) -> datetime:
+    local_analysis_start = analysis_started_at.astimezone(
+        scenario_started_at.tzinfo
+    )
+    return scenario_started_at.replace(
+        year=local_analysis_start.year,
+        month=local_analysis_start.month,
+        day=local_analysis_start.day,
+    )
+
+
 class VideoAnalysisPort(Protocol):
     async def start_session(self, video_id: str) -> AnalysisSession: ...
 
