@@ -9,6 +9,7 @@ import {
   STATUS_LABELS,
 } from "./format";
 import type {
+  ActorRole,
   CaseFilters,
   CaseListItem,
   CaseListResponse,
@@ -30,23 +31,35 @@ const DEFAULT_FILTERS: CaseFilters = {
   page_size: 20,
 };
 
-const ALL_STATUSES: CaseStatus[] = [
-  "YOLO_CANDIDATE",
-  "VLM_REVIEWED",
-  "INVESTIGATING",
-  "NEEDS_HUMAN_FACTS",
-  "REINVESTIGATE",
-  "PENDING_REVIEW",
-  "RECTIFICATION_OPEN",
-  "RECHECK_PENDING",
-  "VLM_REJECTED",
-  "HUMAN_REJECTED",
-  "CLOSED",
-];
-
 const VERIFIED_PPE: PpeType[] = ["helmet", "gloves", "vest"];
 
-type RemovableFilterKey = Exclude<keyof CaseFilters, "page" | "page_size">;
+const CASE_CATEGORIES = [
+  { key: "needs-facts", label: "待安全员补充现场事实", description: "需要补全作业或现场信息" },
+  { key: "pending-review", label: "待项目安全审核人审核", description: "等待确认违规及整改要求" },
+  { key: "rectification", label: "待安全员提交整改证据", description: "等待上传整改照片和说明" },
+  { key: "recheck", label: "待项目安全审核人复查", description: "等待确认整改结果" },
+  { key: "overdue", label: "已逾期", description: "已超过整改期限" },
+  { key: "system", label: "系统分析中", description: "正在进行语义复核或智能调查" },
+  { key: "closed", label: "已关闭", description: "无需继续处理" },
+] as const;
+
+type CaseCategoryKey = typeof CASE_CATEGORIES[number]["key"];
+
+const STATUS_CATEGORIES: Record<CaseStatus, CaseCategoryKey> = {
+  YOLO_CANDIDATE: "system",
+  VLM_REVIEWED: "system",
+  VLM_REJECTED: "closed",
+  INVESTIGATING: "system",
+  NEEDS_HUMAN_FACTS: "needs-facts",
+  REINVESTIGATE: "system",
+  PENDING_REVIEW: "pending-review",
+  HUMAN_REJECTED: "closed",
+  RECTIFICATION_OPEN: "rectification",
+  RECHECK_PENDING: "recheck",
+  CLOSED: "closed",
+};
+
+type RemovableFilterKey = Exclude<keyof CaseFilters, "page" | "page_size" | "status">;
 
 interface ActiveFilter {
   key: RemovableFilterKey;
@@ -60,7 +73,7 @@ function readFiltersFromUrl(): CaseFilters {
   const pageSize = Number(params.get("page_size"));
   return {
     ...DEFAULT_FILTERS,
-    status: (params.get("status") as CaseStatus | null) ?? "",
+    status: "",
     ppe_type: (params.get("ppe_type") as PpeType | null) ?? "",
     zone_id: params.get("zone_id") ?? "",
     responsible_party_id: params.get("responsible_party_id") ?? "",
@@ -85,11 +98,12 @@ function writeFiltersToUrl(filters: CaseFilters) {
 }
 
 interface CaseCenterPageProps {
+  actorRole: ActorRole | null;
   context: DemoContext | null;
   onOpenCase: (caseId: string) => void;
 }
 
-export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
+export function CaseCenterPage({ actorRole, context, onOpenCase }: CaseCenterPageProps) {
   const [filters, setFilters] = useState<CaseFilters>(readFiltersFromUrl);
   const [draftKeyword, setDraftKeyword] = useState(filters.keyword);
   const [response, setResponse] = useState<CaseListResponse | null>(null);
@@ -102,7 +116,11 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchCases(filters, controller.signal)
+    const requestFilters: CaseFilters = {
+      ...filters,
+      status: actorRole === "SITE_SAFETY_OFFICER" ? "RECTIFICATION_OPEN" : "",
+    };
+    fetchCases(requestFilters, controller.signal)
       .then(setResponse)
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
@@ -112,12 +130,11 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filters, reloadToken]);
+  }, [actorRole, filters, reloadToken]);
 
   const activeFilterCount = useMemo(
     () =>
       [
-        filters.status,
         filters.ppe_type,
         filters.zone_id,
         filters.responsible_party_id,
@@ -137,7 +154,6 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
     )?.name;
 
     if (filters.keyword) items.push({ key: "keyword", label: `关键词：${filters.keyword}` });
-    if (filters.status) items.push({ key: "status", label: STATUS_LABELS[filters.status] });
     if (filters.ppe_type) items.push({ key: "ppe_type", label: PPE_LABELS[filters.ppe_type] });
     if (filters.zone_id) {
       items.push({
@@ -183,29 +199,55 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
 
   const stats = response?.statistics;
   const pagination = response?.pagination;
+  const visibleItems = useMemo(
+    () => (response?.items ?? []).filter(
+      (item) => actorRole !== "SITE_SAFETY_OFFICER" || item.status === "RECTIFICATION_OPEN",
+    ),
+    [actorRole, response],
+  );
+  const categorizedItems = useMemo(
+    () => CASE_CATEGORIES.map((category) => ({
+      ...category,
+      items: visibleItems.filter((item) => getCaseCategory(item) === category.key),
+    })).filter((category) => category.items.length > 0),
+    [visibleItems],
+  );
 
   return (
     <main className="case-center" aria-labelledby="case-center-title">
       <section className="case-center__intro">
         <div>
           <p className="case-kicker">安全事件分级处理</p>
-          <h1 id="case-center-title">先处理需要人判断的事件</h1>
+          <h1 id="case-center-title">
+            {actorRole === "SITE_SAFETY_OFFICER" ? "处理待提交整改证据的事件" : "先处理需要人判断的事件"}
+          </h1>
           <p className="case-center__lede">
-            AI 已完成初步筛选。请按当前队列顺序补充事实、完成审核或确认整改结果。
+            {actorRole === "SITE_SAFETY_OFFICER"
+              ? "这里只显示等待现场安全员提交整改证据的事件。"
+              : "AI 已完成初步筛选。请按当前队列顺序补充事实、完成审核或确认整改结果。"}
           </p>
         </div>
       </section>
 
       <section className="triage-summary" aria-label="队列摘要">
-        <SummaryStat label="待人工处理" value={stats?.open_count} />
-        <SummaryStat label="已逾期" value={stats?.overdue_count} tone="danger" />
-        <SummaryStat label="待补事实" value={stats?.needs_human_facts_count} />
-        <SummaryStat label="待项目审核" value={stats?.pending_review_count} />
-        <SummaryStat
-          label="平均关闭"
-          value={stats?.average_closure_minutes == null ? "—" : `${stats.average_closure_minutes} 分`}
-        />
-        {stats?.top_repeat_risk ? (
+        {actorRole === "SITE_SAFETY_OFFICER" ? (
+          <>
+            <SummaryStat label="待提交整改证据" value={stats?.rectification_open_count} />
+            <SummaryStat label="当前页已逾期" value={visibleItems.filter((item) => item.overdue).length} tone="danger" />
+          </>
+        ) : (
+          <>
+            <SummaryStat label="待人工处理" value={stats?.open_count} />
+            <SummaryStat label="已逾期" value={stats?.overdue_count} tone="danger" />
+            <SummaryStat label="待补事实" value={stats?.needs_human_facts_count} />
+            <SummaryStat label="待项目审核" value={stats?.pending_review_count} />
+            <SummaryStat
+              label="平均关闭"
+              value={stats?.average_closure_minutes == null ? "—" : `${stats.average_closure_minutes} 分`}
+            />
+          </>
+        )}
+        {actorRole !== "SITE_SAFETY_OFFICER" && stats?.top_repeat_risk ? (
           <p className="triage-summary__risk">
             高频区域 <strong>{formatZoneName(stats.top_repeat_risk.zone_id, stats.top_repeat_risk.zone_name)}</strong>
             <span>{PPE_LABELS[stats.top_repeat_risk.ppe_type]}</span>
@@ -234,12 +276,6 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
             </div>
           </form>
 
-          <FilterSelect
-            label="处理状态"
-            value={filters.status}
-            onChange={(value) => updateFilter("status", value as CaseStatus | "")}
-            options={ALL_STATUSES.map((status) => [status, STATUS_LABELS[status]])}
-          />
           <FilterSelect
             label="防护装备"
             value={filters.ppe_type}
@@ -353,67 +389,45 @@ export function CaseCenterPage({ context, onOpenCase }: CaseCenterPageProps) {
             </div>
           ) : null}
 
-          {!loading && !error && response?.items.length === 0 ? (
+          {!loading && !error && visibleItems.length === 0 ? (
             <div className="case-state">
               <span>暂无结果</span>
-              <h3>当前筛选下没有事件</h3>
-              <p>可以放宽状态、区域或时间范围，再重新查看。</p>
-              <button
-                type="button"
-                onClick={() => {
-                  clearAllFilters();
-                }}
-              >
-                查看全部事件
-              </button>
+              <h3>{actorRole === "SITE_SAFETY_OFFICER" ? "没有待提交整改证据的事件" : "当前筛选下没有事件"}</h3>
+              <p>{actorRole === "SITE_SAFETY_OFFICER" ? "当前没有需要现场安全员处理的整改事件。" : "可以调整区域或时间范围，再重新查看。"}</p>
+              {actorRole !== "SITE_SAFETY_OFFICER" ? (
+                <button type="button" onClick={clearAllFilters}>查看全部事件</button>
+              ) : null}
             </div>
           ) : null}
 
-          {!error && response?.items.length ? (
-            <ol className={`review-queue${loading ? " is-refreshing" : ""}`}>
-              {response.items.map((item, index) => (
-                <li key={item.case_id} className={item.overdue && index < 2 ? "is-priority" : undefined}>
-                  <article
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => onOpenCase(item.case_id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") onOpenCase(item.case_id);
-                      }}
-                    >
-                    <div className="review-order">
-                      <strong>{String((filters.page - 1) * filters.page_size + index + 1).padStart(2, "0")}</strong>
-                      <span className={`urgency-label urgency-label--${item.urgency.toLowerCase()}`}>
-                        {item.urgency === "HIGH" ? "高风险" : item.urgency === "MEDIUM" ? "中风险" : "低风险"}
-                      </span>
+          {!error && visibleItems.length ? (
+            <div className={`review-groups${loading ? " is-refreshing" : ""}`}>
+              {categorizedItems.map((category) => (
+                <section
+                  key={category.key}
+                  className={`review-group review-group--${category.key}`}
+                  aria-labelledby={`case-category-${category.key}`}
+                >
+                  <header className="review-group__heading">
+                    <div>
+                      <h3 id={`case-category-${category.key}`}>{category.label}</h3>
+                      <p>{category.description}</p>
                     </div>
-                    <div className="review-identity">
-                      <h3>{getCaseTitle(item)}</h3>
-                      <p><span>{formatZoneName(item.zone_id, item.zone_name)}</span><span>{PPE_LABELS[item.ppe_type]}</span></p>
-                      <code title={item.case_id}>{formatCaseReference(item.case_id)}</code>
-                    </div>
-                    <div className="review-reason">
-                      <span>{item.status === "CLOSED" ? "处理结果" : "需要人工处理"}</span>
-                      <strong>{getReviewReason(item.status)}</strong>
-                    </div>
-                    <div className={`review-deadline${item.overdue ? " is-overdue" : ""}`}>
-                      <span>{item.rectification_due_at ? "整改期限" : "发生时间"}</span>
-                      <strong>
-                        {item.overdue
-                          ? formatOverdue(item.rectification_due_at)
-                          : formatDateTime(item.rectification_due_at ?? item.occurred_at)}
-                      </strong>
-                      <small>{item.responsible_party_name ?? "责任主体待确认"}</small>
-                    </div>
-                    <div className="review-next">
-                      <span>下一步</span>
-                      <strong>{STATUS_LABELS[item.status]}</strong>
-                    </div>
-                    <span className="review-arrow" aria-hidden="true">→</span>
-                  </article>
-                </li>
+                    <strong>{category.items.length} 起</strong>
+                  </header>
+                  <ol className="review-queue">
+                    {category.items.map((item, index) => (
+                      <CaseQueueItem
+                        key={item.case_id}
+                        item={item}
+                        sequence={index + 1}
+                        onOpenCase={onOpenCase}
+                      />
+                    ))}
+                  </ol>
+                </section>
               ))}
-            </ol>
+            </div>
           ) : null}
 
           {pagination && pagination.total_pages > 1 ? (
@@ -457,6 +471,63 @@ function SummaryStat({
       <span>{label}</span>
       <strong>{value ?? "—"}</strong>
     </p>
+  );
+}
+
+function getCaseCategory(item: CaseListItem): CaseCategoryKey {
+  return item.overdue ? "overdue" : STATUS_CATEGORIES[item.status];
+}
+
+function CaseQueueItem({
+  item,
+  sequence,
+  onOpenCase,
+}: {
+  item: CaseListItem;
+  sequence: number;
+  onOpenCase: (caseId: string) => void;
+}) {
+  return (
+    <li className={item.overdue && sequence <= 2 ? "is-priority" : undefined}>
+      <article
+        role="link"
+        tabIndex={0}
+        onClick={() => onOpenCase(item.case_id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onOpenCase(item.case_id);
+        }}
+      >
+        <div className="review-order">
+          <strong>{String(sequence).padStart(2, "0")}</strong>
+          <span className={`urgency-label urgency-label--${item.urgency.toLowerCase()}`}>
+            {item.urgency === "HIGH" ? "高风险" : item.urgency === "MEDIUM" ? "中风险" : "低风险"}
+          </span>
+        </div>
+        <div className="review-identity">
+          <h4>{getCaseTitle(item)}</h4>
+          <p><span>{formatZoneName(item.zone_id, item.zone_name)}</span><span>{PPE_LABELS[item.ppe_type]}</span></p>
+          <code title={item.case_id}>{formatCaseReference(item.case_id)}</code>
+        </div>
+        <div className="review-reason">
+          <span>{item.status === "CLOSED" ? "处理结果" : "需要人工处理"}</span>
+          <strong>{getReviewReason(item.status)}</strong>
+        </div>
+        <div className={`review-deadline${item.overdue ? " is-overdue" : ""}`}>
+          <span>{item.rectification_due_at ? "整改期限" : "发生时间"}</span>
+          <strong>
+            {item.overdue
+              ? formatOverdue(item.rectification_due_at)
+              : formatDateTime(item.rectification_due_at ?? item.occurred_at)}
+          </strong>
+          <small>{item.responsible_party_name ?? "责任主体待确认"}</small>
+        </div>
+        <div className="review-next">
+          <span>下一步</span>
+          <strong>{STATUS_LABELS[item.status]}</strong>
+        </div>
+        <span className="review-arrow" aria-hidden="true">→</span>
+      </article>
+    </li>
   );
 }
 

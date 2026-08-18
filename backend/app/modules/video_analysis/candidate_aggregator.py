@@ -100,12 +100,8 @@ class CandidateAggregator:
             observations[-1],
         )
         representative = selected[1]
-        evidence_kind = (
-            EvidenceKind.NEGATIVE_CLASS_DETECTION
-            if ppe_type is PpeType.HELMET
-            else EvidenceKind.MISSING_POSITIVE_ASSOCIATION
-        )
-        confidences = self._aggregation_confidences(ppe_type, observations)
+        evidence_kind = self._evidence_kind(ppe_type, observations)
+        confidences = self._aggregation_confidences(evidence_kind, observations)
         confidence = (
             sum(confidences) / len(confidences)
             * len(confidences)
@@ -139,25 +135,46 @@ class CandidateAggregator:
             first_seen_ms=first_seen_ms,
             last_seen_ms=last_seen_ms,
             frames=[
-                self._evidence_frame(selected[0], ppe_type, FrameRole.BEFORE),
                 self._evidence_frame(
-                    selected[1], ppe_type, FrameRole.REPRESENTATIVE
+                    selected[0], evidence_kind, FrameRole.BEFORE
                 ),
-                self._evidence_frame(selected[2], ppe_type, FrameRole.AFTER),
+                self._evidence_frame(
+                    selected[1], evidence_kind, FrameRole.REPRESENTATIVE
+                ),
+                self._evidence_frame(
+                    selected[2], evidence_kind, FrameRole.AFTER
+                ),
             ],
         )
+
+    def _evidence_kind(
+        self,
+        ppe_type: PpeType,
+        observations: list[PersonFrameObservation],
+    ) -> EvidenceKind:
+        if ppe_type is PpeType.HELMET and all(
+            self._negative_helmet_detection(item) is not None
+            for item in observations
+        ):
+            return EvidenceKind.NEGATIVE_CLASS_DETECTION
+        return EvidenceKind.MISSING_POSITIVE_ASSOCIATION
 
     def _evidence_frame(
         self,
         observation: PersonFrameObservation,
-        ppe_type: PpeType,
+        evidence_kind: EvidenceKind,
         role: FrameRole,
     ) -> EvidenceFrame:
         negative_detection = (
             self._negative_helmet_detection(observation)
-            if ppe_type is PpeType.HELMET
+            if evidence_kind is EvidenceKind.NEGATIVE_CLASS_DETECTION
             else None
         )
+        if (
+            evidence_kind is EvidenceKind.NEGATIVE_CLASS_DETECTION
+            and negative_detection is None
+        ):
+            raise ValueError("negative evidence lacks a real no_helmet box")
         return EvidenceFrame(
             timestamp_ms=observation.timestamp_ms,
             image_url=observation.image_url,
@@ -177,19 +194,21 @@ class CandidateAggregator:
 
     def _aggregation_confidences(
         self,
-        ppe_type: PpeType,
+        evidence_kind: EvidenceKind,
         observations: list[PersonFrameObservation],
     ) -> list[float]:
-        if ppe_type is PpeType.HELMET:
-            return [
-                self._negative_helmet_detection(item).confidence
-                for item in observations
+        if evidence_kind is EvidenceKind.NEGATIVE_CLASS_DETECTION:
+            detections = [
+                self._negative_helmet_detection(item) for item in observations
             ]
+            if any(item is None for item in detections):
+                raise ValueError("negative evidence lacks a real no_helmet box")
+            return [item.confidence for item in detections if item is not None]
         return [item.person.confidence for item in observations]
 
     def _negative_helmet_detection(
         self, observation: PersonFrameObservation
-    ) -> DetectionObservation:
+    ) -> DetectionObservation | None:
         threshold = self.config.class_confidence_thresholds["no_helmet"]
         detections = [
             item
@@ -197,9 +216,7 @@ class CandidateAggregator:
             if item.class_name.lower() == "no_helmet"
             and item.confidence >= threshold
         ]
-        if not detections:
-            raise ValueError("helmet negative sequence lacks a real no_helmet box")
-        return max(detections, key=lambda item: item.confidence)
+        return max(detections, key=lambda item: item.confidence, default=None)
 
     def _aggregation_parameters(
         self,

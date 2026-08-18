@@ -144,7 +144,6 @@ export function CaseDetailPage({ caseId, actor, context, onBack }: CaseDetailPag
       <section className="detail-fact-rail" aria-label="事件摘要">
         <DetailFact label="发生时间" value={formatLongDateTime(snapshot.candidate.occurred_at)} />
         <DetailFact label="持续时间" value={formatDuration(duration)} />
-        <DetailFact label="候选置信度" value={`${Math.round(snapshot.candidate.confidence * 100)}%`} />
         <DetailFact label="任务适用性" value={applicable == null ? "待调查" : applicable ? "确认需要" : "不适用"} tone={applicable == null ? "" : applicable ? "patina" : "danger"} />
         <DetailFact label="责任主体" value={detail.responsible_party_name ?? "待审核确认"} />
         <DetailFact label="整改期限" value={snapshot.rectification_due_at ? formatLongDateTime(snapshot.rectification_due_at) : "未设定"} />
@@ -308,7 +307,6 @@ function EvidenceCard({ frame }: { frame: EvidenceFrame }) {
       <figcaption>
         <strong>{formatDuration(frame.timestamp_ms)}</strong>
         <span>{frame.image_width} × {frame.image_height}</span>
-        <span>{frame.observation_confidence == null ? "人员轨迹关联" : `观测置信度 ${Math.round(frame.observation_confidence * 100)}%`}</span>
       </figcaption>
     </figure>
   );

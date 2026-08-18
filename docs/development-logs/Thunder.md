@@ -555,6 +555,12 @@
 * 将项目 README 收敛为面向使用者的功能介绍和操作指南。
 * 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
 * 修复新建案件固定显示 8 月 7 日的问题，使候选与案件创建时间遵从系统时间。
+* 降低安全帽漏报，使连续未检测到安全帽的人员进入 VLM 复核。
+* 移除前端对 YOLO 候选置信度的展示，避免将其误解为装备本身的置信度。
+* 按业务处理责任分类事件，并将现场安全员列表限制为待提交整改证据事件。
+* 明确 VLM 对安全帽、手套和安全背心的视觉判定边界，降低错误排除违规。
+* 关闭千问视觉思考模式，恢复稳定的非思考复核调用。
+* 将近期 VLM 提示词和运行参数调整整体回退到修改前版本。
 
 ### 开发记录
 
@@ -590,6 +596,34 @@
   * 完成：修复晚于 18:00 分析演示视频时作业许可证失效的问题，并解除后端 ASGI 测试在同步依赖处的阻塞。
   * 实现：案件创建时间继续使用系统当前时间，候选发生时间保留录制场景时刻并同步到分析当天；测试入口在支持的平台使用项目已有 uvloop，并禁止本地 `.env` 改写离线测试配置。
   * 验证：`cd backend && .venv/bin/pytest -q`，388 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-final-build`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
+* 19:12 `feat(vision): 支持安全帽持续缺失候选`
+  * 完成：可评估人员连续未检测到安全帽时生成缺失正类关联候选并进入 VLM 复核，同时保留连续 `no_helmet` 检测形成强负类证据的原有路径。
+  * 实现：安全帽采用与手套、背心一致的连续缺失聚合；全序列均有合格 `no_helmet` 时保存检测框及其置信度，纯缺失或混合序列使用人员置信度并生成无装备框的三帧证据；检测到 `helmet` 会重置缺失序列。
+  * 验证：`cd backend && .venv/bin/python -m pytest -q tests/modules/video_analysis tests/modules/vlm_review tests/services/test_case_pipeline.py tests/services/test_session_manager.py`，105 项通过；`cd backend && .venv/bin/python -m pytest -q`，391 项通过、1 项跳过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && pip3 --python .venv/bin/python check`，无损坏依赖；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-helmet-missing.dSMZta`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，前端未修改，未运行前端检查。
+* 20:14 `fix(frontend): 移除YOLO置信度展示`
+  * 完成：事件详情不再展示候选置信度，关键证据帧不再展示观测置信度，避免将 YOLO 检测分数解释为装备本身的可信程度。
+  * 实现：保留候选与证据帧的置信度数据契约，仅删除前端可见条目，并将事件摘要和证据说明布局调整为删除后的项目数量。
+  * 验证：`cd frontend && npm test -- src/features/review/CaseDetailPage.test.tsx`，3 项通过；`cd frontend && npm test`，13 个测试文件共 57 项通过；`cd frontend && npm run build`，类型检查与生产构建通过；`git diff --check`，通过；项目未配置独立 lint，未运行。
+* 20:38 `feat(cases): 按处理责任分类事件队列`
+  * 完成：事件列表删除处理状态筛选，按待补现场事实、待项目审核、待提交整改证据、待项目复查、已逾期、系统分析中和已关闭七类展示；现场安全员只看到待提交整改证据的事件。
+  * 实现：建立完整的案件状态到业务分类映射，逾期事件优先进入独立分类且不重复展示；列表请求按当前角色限制状态，安全员摘要同步收敛为整改证据与当前页逾期数量。
+  * 验证：`cd frontend && npm test -- src/features/cases/CaseCenterPage.test.tsx`，2 项通过；`cd frontend && npm test`，14 个测试文件共 59 项通过；`cd frontend && npm run build`，类型检查与生产构建通过；`git diff --check`，通过；项目未配置独立 lint，当前环境未提供浏览器调试接口，未执行真实浏览器视觉验收。
+* 21:03 `fix(vlm): 补充PPE复核判定规则`
+  * 完成：明确安全帽、防护手套和安全背心的佩戴判定边界，荧光色普通上衣、安全带和工具带不再作为安全背心依据。
+  * 实现：要求模型忽略检测框及类别文字，至少两帧清楚显示正确佩戴才可排除违规；目标部位过小、模糊、遮挡或无法跨帧确认时返回不确定。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review/test_openai_compat_adapter.py -q`，7 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-prompt-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 21:05 `fix(vlm): 开启千问视觉思考模式`
+  * 完成：真实千问 VLM 请求开启思考模式，使 PPE 复核能够执行更充分的视觉推理。
+  * 实现：将千问兼容请求的 `enable_thinking` 固定为 `true`，其他模型请求参数与输出解析保持不变。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-thinking-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 22:46 `fix(vlm): 关闭千问视觉思考模式`
+  * 完成：关闭真实千问 VLM 的思考模式，避免复核持续失败并恢复非思考调用。
+  * 实现：千问兼容请求明确发送 `enable_thinking=false`，移除思考预算参数；保留 90 秒超时和 2048 Token 输出空间。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app tests`，通过；`cd backend && .venv/bin/python -m build --no-isolation --outdir /tmp/siteppe-vlm-no-thinking-build`，构建成功；全量后端测试运行至约 35% 时执行环境未返回退出码，未计为通过；后端未配置独立 lint 和类型检查，未运行。
+* 22:52 `fix(vlm): 回退近期复核调整`
+  * 完成：将 VLM 提示词、超时、输出上限及对应测试恢复到近期修改前的 `60a15fd` 版本。
+  * 实现：移除新增的三类 PPE 视觉判定提示；默认超时恢复为 30 秒、输出上限恢复为 512 Token；本地环境同步恢复，原有非思考调用保持不变。
+  * 验证：5 个 VLM 版本库文件与 `60a15fd` 对比完全一致；`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app tests`，通过；`cd backend && .venv/bin/python -m build --no-isolation --outdir /tmp/siteppe-vlm-rollback-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
@@ -597,6 +631,8 @@
 * 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
 * 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
 * ASGI 同步依赖测试阻塞可在未修改的 `origin/dev` 基线上复现，排除系统时间功能引入；测试入口启用项目已有 uvloop 后完整后端测试通过。
+* 当前环境未提供可用的浏览器调试接口，本次事件分类改动未执行真实浏览器视觉验收；已通过组件测试和生产构建验证结构、角色过滤与响应式样式编译。
+* 本次全量后端测试运行至约 35% 时执行环境提前结束且未返回退出码；VLM 模块 48 项测试和后端构建均已通过。
 
 ### 后续计划
 

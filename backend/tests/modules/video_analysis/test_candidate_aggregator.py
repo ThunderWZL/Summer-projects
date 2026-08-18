@@ -87,12 +87,13 @@ def stabilize(instance: CandidateAggregator) -> None:
 
 def test_missing_gloves_produce_one_traceable_candidate() -> None:
     instance = aggregator()
+    protected_head_and_torso = (detection("helmet"), detection("vest"))
     stabilize(instance)
 
-    assert instance.observe(frame(200)) == ()
-    assert instance.observe(frame(400)) == ()
-    candidates = instance.observe(frame(600))
-    assert instance.observe(frame(800)) == ()
+    assert instance.observe(frame(200, ppe=protected_head_and_torso)) == ()
+    assert instance.observe(frame(400, ppe=protected_head_and_torso)) == ()
+    candidates = instance.observe(frame(600, ppe=protected_head_and_torso))
+    assert instance.observe(frame(800, ppe=protected_head_and_torso)) == ()
 
     assert len(candidates) == 1
     candidate = candidates[0]
@@ -135,13 +136,16 @@ def test_replaying_the_same_session_window_keeps_the_candidate_id() -> None:
 
 def test_positive_gloves_reset_the_missing_sequence() -> None:
     instance = aggregator()
+    protected_head_and_torso = (detection("helmet"), detection("vest"))
     stabilize(instance)
 
-    assert instance.observe(frame(200)) == ()
-    assert instance.observe(frame(400, ppe=(detection("gloves"),))) == ()
-    assert instance.observe(frame(600)) == ()
-    assert instance.observe(frame(800)) == ()
-    candidates = instance.observe(frame(1_000))
+    assert instance.observe(frame(200, ppe=protected_head_and_torso)) == ()
+    assert instance.observe(
+        frame(400, ppe=(*protected_head_and_torso, detection("gloves")))
+    ) == ()
+    assert instance.observe(frame(600, ppe=protected_head_and_torso)) == ()
+    assert instance.observe(frame(800, ppe=protected_head_and_torso)) == ()
+    candidates = instance.observe(frame(1_000, ppe=protected_head_and_torso))
 
     assert [item.ppe_type for item in candidates] == [PpeType.GLOVES]
     assert candidates[0].first_seen_ms == 600
@@ -171,18 +175,55 @@ def test_helmet_candidate_keeps_only_real_negative_detection_boxes() -> None:
     assert all(item.observation_confidence == 0.7 for item in helmet.frames)
 
 
-def test_missing_helmet_without_no_helmet_never_produces_a_candidate() -> None:
+def test_missing_helmet_produces_a_missing_positive_association_candidate() -> None:
     instance = aggregator()
     stabilize(instance)
 
-    output = [
+    candidates = [
         *instance.observe(frame(200)),
         *instance.observe(frame(400)),
         *instance.observe(frame(600)),
-        *instance.observe(frame(800)),
     ]
 
-    assert all(item.ppe_type is not PpeType.HELMET for item in output)
+    helmet = next(item for item in candidates if item.ppe_type is PpeType.HELMET)
+    assert helmet.evidence_kind is EvidenceKind.MISSING_POSITIVE_ASSOCIATION
+    assert all(item.observation_box is None for item in helmet.frames)
+    assert all(item.observation_confidence is None for item in helmet.frames)
+
+
+def test_mixed_helmet_negative_sequence_uses_missing_positive_association() -> None:
+    instance = aggregator()
+    stabilize(instance)
+
+    candidates = [
+        *instance.observe(frame(200, ppe=(detection("no_helmet"),))),
+        *instance.observe(frame(400, ppe=())),
+        *instance.observe(frame(600, ppe=(detection("no_helmet"),))),
+    ]
+
+    helmet = next(item for item in candidates if item.ppe_type is PpeType.HELMET)
+    assert helmet.evidence_kind is EvidenceKind.MISSING_POSITIVE_ASSOCIATION
+    assert all(item.observation_box is None for item in helmet.frames)
+
+
+def test_detected_helmet_resets_the_missing_sequence() -> None:
+    instance = aggregator()
+    stabilize(instance)
+
+    assert instance.observe(frame(200, ppe=())) == ()
+    assert instance.observe(frame(400, ppe=(detection("helmet"),))) == ()
+    assert all(
+        item.ppe_type is not PpeType.HELMET
+        for item in instance.observe(frame(600, ppe=()))
+    )
+    assert all(
+        item.ppe_type is not PpeType.HELMET
+        for item in instance.observe(frame(800, ppe=()))
+    )
+    candidates = instance.observe(frame(1_000, ppe=()))
+
+    helmet = next(item for item in candidates if item.ppe_type is PpeType.HELMET)
+    assert helmet.first_seen_ms == 600
 
 
 def test_unevaluable_frames_never_accumulate_a_candidate() -> None:
@@ -217,12 +258,12 @@ def test_tool_occlusion_remains_missing_positive_evidence_for_vlm() -> None:
 
 def test_missing_vest_produces_an_independent_candidate() -> None:
     instance = aggregator()
-    protected_hands = (detection("gloves"),)
+    protected_head_and_hands = (detection("helmet"), detection("gloves"))
     stabilize(instance)
 
-    instance.observe(frame(200, ppe=protected_hands))
-    instance.observe(frame(400, ppe=protected_hands))
-    candidates = instance.observe(frame(600, ppe=protected_hands))
+    instance.observe(frame(200, ppe=protected_head_and_hands))
+    instance.observe(frame(400, ppe=protected_head_and_hands))
+    candidates = instance.observe(frame(600, ppe=protected_head_and_hands))
 
     assert [item.ppe_type for item in candidates] == [PpeType.VEST]
     assert candidates[0].evidence_kind is EvidenceKind.MISSING_POSITIVE_ASSOCIATION

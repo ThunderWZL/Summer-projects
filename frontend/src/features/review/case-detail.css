@@ -103,7 +103,7 @@
 
 .detail-fact-rail {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin-bottom: 70px;
   border-bottom: 1px solid var(--case-rule);
 }
@@ -240,7 +240,7 @@
   padding: 14px;
 }
 
-.evidence-card figcaption strong { grid-row: span 2; color: var(--case-gold-pale); font-family: Consolas, monospace; }
+.evidence-card figcaption strong { color: var(--case-gold-pale); font-family: Consolas, monospace; }
 .evidence-card figcaption span { color: var(--case-faint); font-size: 11px; }
 
 .evidence-fallback {

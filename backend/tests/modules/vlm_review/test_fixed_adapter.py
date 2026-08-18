@@ -117,6 +117,25 @@ def test_auto_confirms_three_frame_missing_positive_association_for_vest() -> No
     assert (payload["verdict"], payload["persistent"]) == ("CONFIRMED", True)
 
 
+def test_auto_reviews_three_frame_missing_positive_association_for_helmet() -> None:
+    response = asyncio.run(
+        complete(
+            make_candidate(
+                evidence_kind="MISSING_POSITIVE_ASSOCIATION",
+                ppe_type="helmet",
+                frame_roles=("BEFORE", "REPRESENTATIVE", "AFTER"),
+            ),
+            FixedVlmScenario.AUTO,
+        )
+    )
+
+    payload = json.loads(response.content)
+    assert (payload["verdict"], payload["evidence_sufficient"]) == (
+        "CONFIRMED",
+        True,
+    )
+
+
 def test_auto_marks_missing_frame_uncertain() -> None:
     response = asyncio.run(
         complete(
