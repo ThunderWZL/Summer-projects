@@ -3,15 +3,21 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from threading import RLock
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.contracts import PpeType
 from app.domain.site_context import (
+    CameraNotFound,
     CameraInfo,
+    CameraWorksiteConfiguration,
     ResponsibleParty,
     TaskPpeMatrix,
     VideoInfo,
+    WorksitePreset,
+    WorksitePresetNotFound,
     WorkPermit,
     WorkPermitStatus,
     ZoneInfo,
@@ -26,6 +32,7 @@ class _ConfigModel(BaseModel):
 
 class _TaskRule(_ConfigModel):
     task_code: str = Field(min_length=1)
+    name: str = Field(min_length=1)
     hazards: list[str]
     required_ppe: list[PpeType]
     exception_note: str | None = None
@@ -88,6 +95,7 @@ class MemorySiteContext:
         task_rules_path: str | Path | None = None,
         scene_assignments_path: str | Path | None = None,
     ) -> None:
+        self._lock = RLock()
         rules = _TaskRules.model_validate(
             self._load_json(task_rules_path or _RESOURCE_DIR / "task_ppe_rules.json")
         )
@@ -99,6 +107,7 @@ class MemorySiteContext:
         self._matrices = {
             rule.task_code: TaskPpeMatrix(
                 task_code=rule.task_code,
+                name=rule.name,
                 hazards=list(rule.hazards),
                 required_ppe=list(rule.required_ppe),
                 exception_note=rule.exception_note,
@@ -106,6 +115,7 @@ class MemorySiteContext:
             )
             for rule in rules.tasks
         }
+        self._preset_ids = [rule.task_code for rule in rules.tasks]
         unknown_tasks = {
             scene.task_code
             for scene in assignments.scenes
@@ -163,6 +173,17 @@ class MemorySiteContext:
             for scene in assignments.scenes
             if scene.task_code is not None
         ]
+        self._camera_configurations = {
+            scene.camera_id: CameraWorksiteConfiguration(
+                camera_id=scene.camera_id,
+                mode="PRESET",
+                preset_id=scene.task_code,
+                name=self._matrices[scene.task_code].name,
+                required_ppe=list(self._matrices[scene.task_code].required_ppe),
+            )
+            for scene in assignments.scenes
+            if scene.task_code is not None
+        }
 
     @staticmethod
     def _load_json(path: str | Path) -> object:
@@ -175,16 +196,19 @@ class MemorySiteContext:
     def find_active_work_permits(
         self, zone_id: str, occurred_at: datetime
     ) -> list[WorkPermit]:
-        return [
-            permit
-            for permit in self._permits
-            if permit.zone_id == zone_id
-            and permit.status is WorkPermitStatus.ACTIVE
-            and permit.starts_at <= occurred_at <= permit.ends_at
-        ]
+        with self._lock:
+            return [
+                permit.model_copy(deep=True)
+                for permit in self._permits
+                if permit.zone_id == zone_id
+                and permit.status is WorkPermitStatus.ACTIVE
+                and permit.starts_at <= occurred_at <= permit.ends_at
+            ]
 
     def get_task_ppe_matrix(self, task_code: str) -> TaskPpeMatrix | None:
-        return self._matrices.get(task_code)
+        with self._lock:
+            matrix = self._matrices.get(task_code)
+            return matrix.model_copy(deep=True) if matrix is not None else None
 
     def list_eligible_responsible_parties(
         self, zone_id: str
@@ -200,3 +224,95 @@ class MemorySiteContext:
 
     def get_video(self, video_id: str) -> VideoInfo | None:
         return next((video for video in self._videos if video.video_id == video_id), None)
+
+    def list_worksite_presets(self) -> list[WorksitePreset]:
+        with self._lock:
+            return [
+                WorksitePreset(
+                    preset_id=preset_id,
+                    name=self._matrices[preset_id].name,
+                    required_ppe=list(self._matrices[preset_id].required_ppe),
+                )
+                for preset_id in self._preset_ids
+            ]
+
+    def list_camera_worksite_configurations(
+        self,
+    ) -> list[CameraWorksiteConfiguration]:
+        with self._lock:
+            return [
+                self._camera_configurations[camera_id].model_copy(deep=True)
+                for camera_id in self._cameras
+                if camera_id in self._camera_configurations
+            ]
+
+    def get_camera_worksite_configuration(
+        self, camera_id: str
+    ) -> CameraWorksiteConfiguration | None:
+        with self._lock:
+            configuration = self._camera_configurations.get(camera_id)
+            return configuration.model_copy(deep=True) if configuration else None
+
+    def configure_camera_worksite(
+        self,
+        camera_id: str,
+        *,
+        mode: Literal["PRESET", "CUSTOM"],
+        preset_id: str | None = None,
+        name: str | None = None,
+        required_ppe: list[PpeType] | None = None,
+    ) -> CameraWorksiteConfiguration:
+        with self._lock:
+            camera = self._cameras.get(camera_id)
+            if camera is None:
+                raise CameraNotFound(camera_id)
+
+            if mode == "PRESET":
+                if preset_id not in self._preset_ids:
+                    raise WorksitePresetNotFound(preset_id or "")
+                matrix = self._matrices[preset_id]
+                configuration = CameraWorksiteConfiguration(
+                    camera_id=camera_id,
+                    mode="PRESET",
+                    preset_id=preset_id,
+                    name=matrix.name,
+                    required_ppe=list(matrix.required_ppe),
+                )
+                task_code = preset_id
+            else:
+                normalized_name = (name or "").strip()
+                if not normalized_name or len(normalized_name) > 40:
+                    raise ValueError("custom worksite name must contain 1 to 40 characters")
+                selected_ppe = list(dict.fromkeys(required_ppe or []))
+                allowed_ppe = {PpeType.HELMET, PpeType.GLOVES, PpeType.VEST}
+                if any(ppe not in allowed_ppe for ppe in selected_ppe):
+                    raise ValueError("custom worksite supports helmet, gloves, and vest only")
+                task_code = f"CUSTOM_{camera_id.replace('-', '_')}"
+                matrix = TaskPpeMatrix(
+                    task_code=task_code,
+                    name=normalized_name,
+                    hazards=["现场作业风险"],
+                    required_ppe=selected_ppe,
+                    rectification_window_minutes=60,
+                )
+                self._matrices[task_code] = matrix
+                configuration = CameraWorksiteConfiguration(
+                    camera_id=camera_id,
+                    mode="CUSTOM",
+                    name=normalized_name,
+                    required_ppe=selected_ppe,
+                )
+
+            self._permits = [
+                permit.model_copy(
+                    update={
+                        "task_code": task_code,
+                        "hazards": list(matrix.hazards),
+                    }
+                )
+                if permit.zone_id == camera.zone_id
+                else permit
+                for permit in self._permits
+            ]
+            self._camera_configurations[camera_id] = configuration
+            return configuration.model_copy(deep=True)

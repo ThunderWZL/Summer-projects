@@ -6,14 +6,15 @@ import type { AnalysisEvent } from "../../shared/ws";
 import { MonitorPage } from "./MonitorPage";
 import {
   analysisSession,
-  demoContext,
   demoVideos,
+  worksiteConfigurations,
 } from "../../test/fixtures";
 
 const apiMocks = vi.hoisted(() => ({
   listDemoVideos: vi.fn(),
-  getDemoContext: vi.fn(),
+  getWorksiteConfigurations: vi.fn(),
   startAnalysisSession: vi.fn(),
+  updateCameraWorksite: vi.fn(),
 }));
 
 interface CapturedHandlers {
@@ -37,8 +38,9 @@ const wsMocks = vi.hoisted(() => ({
 vi.mock("../../shared/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/api")>()),
   listDemoVideos: apiMocks.listDemoVideos,
-  getDemoContext: apiMocks.getDemoContext,
+  getWorksiteConfigurations: apiMocks.getWorksiteConfigurations,
   startAnalysisSession: apiMocks.startAnalysisSession,
+  updateCameraWorksite: apiMocks.updateCameraWorksite,
 }));
 
 vi.mock("../../shared/ws", async (importOriginal) => ({
@@ -48,8 +50,11 @@ vi.mock("../../shared/ws", async (importOriginal) => ({
 
 beforeEach(() => {
   apiMocks.listDemoVideos.mockReset().mockResolvedValue(demoVideos);
-  apiMocks.getDemoContext.mockReset().mockResolvedValue(demoContext);
+  apiMocks.getWorksiteConfigurations
+    .mockReset()
+    .mockResolvedValue(worksiteConfigurations);
   apiMocks.startAnalysisSession.mockReset().mockResolvedValue(analysisSession);
+  apiMocks.updateCameraWorksite.mockReset();
   wsMocks.connections.length = 0;
   wsMocks.connectAnalysisEvents.mockReset().mockImplementation(
     (_url: string, handlers: CapturedHandlers) => {
@@ -128,6 +133,39 @@ describe("MonitorPage", () => {
     expect(
       screen.getByRole("img", { name: "CAM-01 实时标注画面" }),
     ).toBeTruthy();
+  });
+
+  it("saves a custom camera rule and immediately updates its Chinese display", async () => {
+    apiMocks.updateCameraWorksite.mockResolvedValue({
+      camera_id: "CAM-02",
+      mode: "CUSTOM",
+      preset_id: null,
+      name: "临时材料检查区",
+      required_ppe: ["helmet", "vest"],
+    });
+    render(
+      <MonitorPage configurationOpen onCloseConfiguration={vi.fn()} />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "配置 CAM-02" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "场地方案" }), {
+      target: { value: "CUSTOM" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "自定义场地名称" }), {
+      target: { value: "临时材料检查区" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "需要防护手套" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 CAM-02 配置" }));
+
+    await waitFor(() => {
+      expect(apiMocks.updateCameraWorksite).toHaveBeenCalledWith("CAM-02", {
+        mode: "CUSTOM",
+        name: "临时材料检查区",
+        required_ppe: ["helmet", "vest"],
+      });
+    });
+    expect(screen.getByText("当前场地：临时材料检查区")).toBeTruthy();
+    expect(screen.getByText("防护要求：安全帽、安全背心")).toBeTruthy();
   });
 
   it("shows a failed first start and retries the requested channel through REST", async () => {

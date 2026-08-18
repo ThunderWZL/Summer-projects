@@ -5,6 +5,11 @@ export type PpeType =
   | "vest"
   | "boots";
 
+export type ConfigurablePpe = Extract<
+  PpeType,
+  "helmet" | "gloves" | "vest"
+>;
+
 export type ActorRole =
   | "SITE_SAFETY_OFFICER"
   | "PROJECT_SAFETY_REVIEWER";
@@ -46,6 +51,7 @@ export interface WorkPermit {
 
 export interface TaskPpeMatrix {
   task_code: string;
+  name: string;
   hazards: string[];
   required_ppe: PpeType[];
   exception_note: string | null;
@@ -75,6 +81,33 @@ export interface DemoContext {
   responsible_parties: ResponsibleParty[];
   users: DemoUser[];
 }
+
+export interface WorksitePreset {
+  preset_id: string;
+  name: string;
+  required_ppe: ConfigurablePpe[];
+}
+
+export interface CameraWorksiteConfiguration {
+  camera_id: string;
+  mode: "PRESET" | "CUSTOM";
+  preset_id: string | null;
+  name: string;
+  required_ppe: ConfigurablePpe[];
+}
+
+export interface WorksiteConfigurations {
+  presets: WorksitePreset[];
+  cameras: CameraWorksiteConfiguration[];
+}
+
+export type WorksiteConfigurationUpdate =
+  | { mode: "PRESET"; preset_id: string }
+  | {
+      mode: "CUSTOM";
+      name: string;
+      required_ppe: ConfigurablePpe[];
+    };
 
 export type AnalysisStage =
   | "STARTING"
@@ -169,6 +202,29 @@ export function listDemoVideos(signal?: AbortSignal): Promise<DemoVideo[]> {
 
 export function getDemoContext(signal?: AbortSignal): Promise<DemoContext> {
   return requestJson<DemoContext>("/api/v1/demo/context", { signal });
+}
+
+export function getWorksiteConfigurations(
+  signal?: AbortSignal,
+): Promise<WorksiteConfigurations> {
+  return requestJson<WorksiteConfigurations>(
+    "/api/v1/demo/worksite-configurations",
+    { signal },
+  );
+}
+
+export function updateCameraWorksite(
+  cameraId: string,
+  update: WorksiteConfigurationUpdate,
+): Promise<CameraWorksiteConfiguration> {
+  return requestJson<CameraWorksiteConfiguration>(
+    `/api/v1/demo/worksite-configurations/${encodeURIComponent(cameraId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    },
+  );
 }
 
 export function startAnalysisSession(
