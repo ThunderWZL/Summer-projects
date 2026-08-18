@@ -46,6 +46,7 @@ describe("WorksiteConfigurationDialog", () => {
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /配置 CAM-/ })).toHaveLength(6);
     expect(screen.queryByText("MATERIAL_CUTTING")).toBeNull();
+    expect(screen.queryByText(/后端服务重启后恢复默认/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "配置 CAM-02" }));
     fireEvent.change(screen.getByRole("combobox", { name: "场地方案" }), {

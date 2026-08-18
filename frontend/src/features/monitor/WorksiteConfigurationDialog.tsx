@@ -69,7 +69,7 @@ export function WorksiteConfigurationDialog({
         </header>
 
         <p className="worksite-dialog__hint">
-          选择监控通道并设置当前场地。配置在后端服务重启后恢复默认。
+          选择监控通道并设置当前场地。
         </p>
         {disabled ? (
           <p className="worksite-dialog__notice" role="status">

@@ -577,6 +577,10 @@
   * 完成：监控台顶部以配置按钮替换角色切换，案件中心保留角色选择；六路监控卡片以中文展示当前场地和 PPE 要求，保存配置后立即更新。
   * 实现：监控页并行加载视频与运行期场地配置，通过配置接口写回指定 CAM；分析启动或运行期间禁止保存配置，避免当前推理规则中途变化。
   * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm test -- --run src/App.test.tsx src/features/monitor/ChannelCard.test.tsx src/features/monitor/MonitorPage.test.tsx`，3 个测试文件共 17 项通过；`cd frontend && npm run build`，构建成功；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests -q`，382 项通过、1 项跳过、1 项因既有相对路径依赖运行目录而失败；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/modules/requirements_rag/test_acceptance_regressions.py::test_shipped_manifest_loads_with_real_provenance_metadata -q`，该项在后端目录重跑通过；项目未配置独立 lint，未运行。
+* 13:43 `fix(frontend): 移除配置重启提示`
+  * 完成：删除场地配置页面中后端重启后恢复默认的提示文字，仅保留配置操作说明。
+  * 实现：收敛配置弹窗说明文案，并增加该提示不再显示的组件回归断言。
+  * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
 
 ### 问题与处理
 
