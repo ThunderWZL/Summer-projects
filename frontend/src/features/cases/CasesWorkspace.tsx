@@ -46,6 +46,12 @@ export function CasesWorkspace({
     [context],
   );
   const actor = activeUsers.find((user) => user.actor_id === actorId) ?? null;
+  const actorRole = actor?.role
+    ?? (actorId === "officer-01"
+      ? "SITE_SAFETY_OFFICER"
+      : actorId === "reviewer-01"
+        ? "PROJECT_SAFETY_REVIEWER"
+        : null);
 
   return (
     <div className="case-workspace">
@@ -58,7 +64,7 @@ export function CasesWorkspace({
           onBack={() => onSelectCase(null)}
         />
       ) : (
-        <CaseCenterPage context={context} onOpenCase={onSelectCase} />
+        <CaseCenterPage actorRole={actorRole} context={context} onOpenCase={onSelectCase} />
       )}
     </div>
   );
