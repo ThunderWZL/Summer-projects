@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from dataclasses import replace
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.contracts import (
@@ -36,6 +37,10 @@ SessionRunner = Callable[[AnalysisSession, "SessionManager"], Awaitable[None]]
 SessionSaver = Callable[[AnalysisSession, int], None]
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _ignore_session_save(
     _session: AnalysisSession,
     _playback_ms: int,
@@ -52,12 +57,14 @@ class SessionManager(VideoAnalysisPort):
         run_session: SessionRunner,
         *,
         save_session: SessionSaver = _ignore_session_save,
+        clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._event_hub = event_hub
         self._get_video = get_video
         self._get_stream = get_stream
         self._run_session = run_session
         self._save_session = save_session
+        self._clock = clock
         self._sessions: dict[str, AnalysisSession] = {}
         self._active_session_id: str | None = None
         self._streamable_session_ids: set[str] = set()
@@ -74,6 +81,7 @@ class SessionManager(VideoAnalysisPort):
                 session_id=f"analysis-session-{uuid4().hex}",
                 video_id=video_id,
                 stage=AnalysisStage.STARTING,
+                started_at=self._clock(),
             )
             self._save_session(session, 0)
             self._sessions[session.session_id] = session

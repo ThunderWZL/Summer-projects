@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from app.contracts import AnalysisEvent, AnalysisStage
@@ -45,6 +46,7 @@ class AnalysisSession:
     session_id: str
     video_id: str
     stage: AnalysisStage
+    started_at: datetime
 
 
 class VideoAnalysisPort(Protocol):

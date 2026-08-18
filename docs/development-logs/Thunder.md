@@ -554,6 +554,7 @@
 * 让六路监控默认持续播放，同时保持点击开始后一次只分析一路。
 * 将项目 README 收敛为面向使用者的功能介绍和操作指南。
 * 支持六路 CAM 在服务运行期间配置场地及三类 PPE 要求。
+* 修复新建案件固定显示 8 月 7 日的问题，使候选与案件创建时间遵从系统时间。
 
 ### 开发记录
 
@@ -581,13 +582,19 @@
   * 完成：删除场地配置页面中后端重启后恢复默认的提示文字，仅保留配置操作说明。
   * 实现：收敛配置弹窗说明文案，并增加该提示不再显示的组件回归断言。
   * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 17:09 `fix(events): 使用系统时间创建案件`
+  * 完成：新分析会话产生的候选发生时间和案件创建时间不再继承固定的 2026 年 8 月 7 日；真实 YOLO 与 fixture 路径使用同一系统时间语义。
+  * 实现：分析会话记录带时区的启动时间，候选以会话启动时间叠加视频位置，案件通过注入时钟记录实际创建时间；演示作业许可证按事件日期重建当天 08:00—18:00 时间窗，保持 resolver 规则有效。
+  * 验证：`cd backend && env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/services/test_case_pipeline.py tests/services/test_session_manager.py tests/services/test_session_manager_sql_persistence.py tests/modules/video_analysis/test_runtime.py tests/modules/video_analysis/test_video_analysis.py tests/domain/test_site_context.py tests/domain/test_video_analysis.py`，49 项通过；`cd backend && timeout 15s env VISION_PROVIDER=fixture VLM_PROVIDER=fixed DEEPSEEK_API_KEY= EMBEDDING_API_KEY= EMBEDDING_BASE_URL= VLM_API_KEY= VLM_API_BASE_URL= .venv/bin/pytest -q tests/integration/test_end_to_end.py::test_new_demo_case_uses_system_time_and_current_permit`，1 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-event-time-build-29baXn`，构建成功；`git diff --check`，通过；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
 * 当前环境未提供可用的浏览器调试接口，未执行真实浏览器播放验收；已通过组件测试校验自动播放、循环、静音与内联播放属性。
 * 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
 * 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
+* 原有 `test_independent_facts_context_closes_through_public_commands_v1_to_v10` 在当前环境的第二次 ASGI 请求处等待 AnyIO 工作线程，单独运行仍可复现；本次未修改该既有测试，以 49 项受影响模块测试和新增系统时间端到端回归作为提交门禁。
 
 ### 后续计划
 
 * 在演示浏览器中确认六路视频同时循环播放，并点击任一路验证仅该路切换为分析标注流。
+* 在 `dev` 集成环境新建一个案件，确认列表与详情显示当前系统日期；历史案件保留原始时间不回填。

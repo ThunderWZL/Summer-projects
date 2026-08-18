@@ -128,8 +128,7 @@ def get_case_store() -> CaseStorePort:
 @lru_cache
 def get_analysis_session_store() -> SqlAlchemyAnalysisSessionStore:
     return SqlAlchemyAnalysisSessionStore(
-        initialize_database_runtime().session_factory,
-        clock=get_clock(),
+        initialize_database_runtime().session_factory
     )
 
 
@@ -179,6 +178,7 @@ def get_session_manager() -> SessionManager:
         analysis.get_stream,
         analysis.run_session,
         save_session=get_analysis_session_store().save,
+        clock=get_clock(),
     )
 
 
@@ -366,6 +366,7 @@ def build_fixture_case_pipeline(
         workflow,
         vlm,
         investigation,
+        clock,
     )
 
 

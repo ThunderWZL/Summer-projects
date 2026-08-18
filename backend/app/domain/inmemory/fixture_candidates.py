@@ -54,6 +54,7 @@ def build_fixture_candidate(
     ppe_type: PpeType | None = None,
     representative_ms: int | None = None,
     person_track_id: str | None = None,
+    scene_started_at: datetime = _SCENARIO_STARTED_AT,
 ) -> CandidateEvidence | None:
     if ppe_type is None:
         scenarios = _SCENES.get(camera_id, ())
@@ -121,7 +122,7 @@ def build_fixture_candidate(
                 "minimum_frames": 3,
                 "window_ms": 2_000,
             },
-            "occurred_at": _SCENARIO_STARTED_AT
+            "occurred_at": scene_started_at
             + timedelta(milliseconds=representative_ms),
             "first_seen_ms": representative_ms - 500,
             "last_seen_ms": representative_ms + 500,
@@ -133,6 +134,8 @@ def build_fixture_candidate(
 def candidates_for_video(
     video: VideoInfo,
     session_id: str,
+    *,
+    scene_started_at: datetime,
 ) -> list[CandidateEvidence]:
     candidates = []
     for scenario in _SCENES.get(video.camera_id, ()):
@@ -145,6 +148,7 @@ def candidates_for_video(
             person_track_id=(
                 f"track-{video.camera_id.lower()}-{scenario.person_key}"
             ),
+            scene_started_at=scene_started_at,
         )
         if candidate is not None:
             candidates.append(candidate)

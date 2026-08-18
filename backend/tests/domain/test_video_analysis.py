@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from inspect import signature
 from typing import get_type_hints
 
@@ -7,6 +8,7 @@ import pytest
 from app.contracts import AnalysisEvent, AnalysisStage
 from app.domain.case_store import CaseQuery
 from app.domain.inmemory.case_store import InMemoryCaseStore
+from app.domain.inmemory.fixture_candidates import candidates_for_video
 from app.domain.inmemory.fixture_cases import demo_cases
 from app.domain.inmemory.site_context import MemorySiteContext
 from app.domain.inmemory.video_analysis import InMemoryVideoAnalysis
@@ -54,12 +56,14 @@ def test_analysis_session_and_port_expose_the_frozen_contract() -> None:
         session_id="session-01",
         video_id="video-no-vest-02",
         stage=AnalysisStage.INFERENCING,
+        started_at=datetime.fromisoformat("2026-08-18T16:00:00+08:00"),
     )
 
     assert session == AnalysisSession(
         session_id="session-01",
         video_id="video-no-vest-02",
         stage=AnalysisStage.INFERENCING,
+        started_at=datetime.fromisoformat("2026-08-18T16:00:00+08:00"),
     )
     assert {
         "start_session",
@@ -72,6 +76,20 @@ def test_analysis_session_and_port_expose_the_frozen_contract() -> None:
         "str",
         str,
     }
+
+
+def test_fixture_candidates_anchor_occurrence_to_analysis_start() -> None:
+    analysis_started_at = datetime.fromisoformat("2026-08-18T16:00:00+08:00")
+    video = MemorySiteContext().get_video("video-no-vest-02")
+    assert video is not None
+
+    candidates = candidates_for_video(
+        video,
+        "analysis-session-fixture",
+        scene_started_at=analysis_started_at,
+    )
+
+    assert candidates[0].occurred_at.date() == analysis_started_at.date()
 
 
 def _reset_composition() -> None:

@@ -79,7 +79,11 @@ class InMemoryVideoAnalysis:
             inference_fps=12.0,
         )
         await asyncio.sleep(1.0)
-        candidates = candidates_for_video(video, session.session_id)
+        candidates = candidates_for_video(
+            video,
+            session.session_id,
+            scene_started_at=session.started_at,
+        )
         case_ids: set[str] = set()
         for candidate in candidates:
             case = self._pipeline.ensure_case(candidate)

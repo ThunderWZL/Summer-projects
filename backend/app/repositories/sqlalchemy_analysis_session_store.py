@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
-
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.database.models import AnalysisSessionModel
@@ -16,11 +13,8 @@ class SqlAlchemyAnalysisSessionStore:
     def __init__(
         self,
         session_factory: sessionmaker[Session],
-        *,
-        clock: Callable[[], datetime],
     ) -> None:
         self._session_factory = session_factory
-        self._clock = clock
 
     def save(
         self,
@@ -38,7 +32,7 @@ class SqlAlchemyAnalysisSessionStore:
                         id=analysis_session.session_id,
                         video_id=analysis_session.video_id,
                         status=analysis_session.stage,
-                        started_at=self._clock(),
+                        started_at=analysis_session.started_at,
                         playback_ms=playback_ms,
                     )
                 )

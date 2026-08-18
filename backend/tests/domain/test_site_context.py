@@ -65,6 +65,21 @@ def test_permit_is_found_only_within_its_window() -> None:
     assert outside == []
 
 
+def test_demo_permit_window_follows_the_event_calendar_date() -> None:
+    context = make_context()
+    occurred_at = datetime.fromisoformat("2026-08-18T10:00:00+08:00")
+
+    permits = context.find_active_work_permits("zone-02", occurred_at)
+
+    assert len(permits) == 1
+    assert permits[0].starts_at == datetime.fromisoformat(
+        "2026-08-18T08:00:00+08:00"
+    )
+    assert permits[0].ends_at == datetime.fromisoformat(
+        "2026-08-18T18:00:00+08:00"
+    )
+
+
 def test_operational_tasks_require_the_three_available_ppe_types() -> None:
     context = make_context()
 

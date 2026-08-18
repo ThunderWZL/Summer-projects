@@ -47,7 +47,7 @@ def build_vision_video_analysis(
         return CandidateAggregator(
             session_id=session.session_id,
             camera_id=video.camera_id,
-            scene_started_at=video.scenario_started_at,
+            scene_started_at=session.started_at,
             model_name=settings.vision_model_name,
             model_version=settings.vision_model_version,
             weights_sha256=weights_sha256,
