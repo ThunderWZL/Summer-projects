@@ -552,6 +552,7 @@
 ### 当日目标
 
 * 让六路监控默认持续播放，同时保持点击开始后一次只分析一路。
+* 将项目 README 收敛为面向使用者的功能介绍和操作指南。
 
 ### 开发记录
 
@@ -559,6 +560,10 @@
   * 完成：六路监控卡片在未分析时自动静音循环播放；选中通道继续切换到现有实时标注流，其余通道不中断播放。
   * 实现：仅调整通道卡片的视频播放属性与状态文案，保留单活动会话、点击启动和切换确认逻辑。
   * 验证：`cd frontend && npm test -- --run src/features/monitor/ChannelCard.test.tsx`，2 项通过；`cd frontend && npm test`，12 个测试文件共 52 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 12:10 `docs(readme): 聚焦项目功能与使用方法`
+  * 完成：README 改为介绍核心功能、六路场景、快速启动和人工闭环用法，删除架构、接口、数据库、依赖分组和测试命令等开发细节。
+  * 实现：保留运行所需的视频、模型、密钥配置和双终端启动步骤，并将整改流程更新为直接上传整改照片。
+  * 验证：`git diff --check`，通过；`test -f backend/.env.example && test -f frontend/package.json && test -d data/demo && test -f best.pt`，引用的本地路径均存在；项目未配置 Markdown lint，本提交仅修改文档，未运行代码测试和构建。
 
 ### 问题与处理
 
