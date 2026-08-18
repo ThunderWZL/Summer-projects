@@ -560,6 +560,7 @@
 * 按业务处理责任分类事件，并将现场安全员列表限制为待提交整改证据事件。
 * 明确 VLM 对安全帽、手套和安全背心的视觉判定边界，降低错误排除违规。
 * 关闭千问视觉思考模式，恢复稳定的非思考复核调用。
+* 将近期 VLM 提示词和运行参数调整整体回退到修改前版本。
 
 ### 开发记录
 
@@ -619,6 +620,10 @@
   * 完成：关闭真实千问 VLM 的思考模式，避免复核持续失败并恢复非思考调用。
   * 实现：千问兼容请求明确发送 `enable_thinking=false`，移除思考预算参数；保留 90 秒超时和 2048 Token 输出空间。
   * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app tests`，通过；`cd backend && .venv/bin/python -m build --no-isolation --outdir /tmp/siteppe-vlm-no-thinking-build`，构建成功；全量后端测试运行至约 35% 时执行环境未返回退出码，未计为通过；后端未配置独立 lint 和类型检查，未运行。
+* 22:52 `fix(vlm): 回退近期复核调整`
+  * 完成：将 VLM 提示词、超时、输出上限及对应测试恢复到近期修改前的 `60a15fd` 版本。
+  * 实现：移除新增的三类 PPE 视觉判定提示；默认超时恢复为 30 秒、输出上限恢复为 512 Token；本地环境同步恢复，原有非思考调用保持不变。
+  * 验证：5 个 VLM 版本库文件与 `60a15fd` 对比完全一致；`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app tests`，通过；`cd backend && .venv/bin/python -m build --no-isolation --outdir /tmp/siteppe-vlm-rollback-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
