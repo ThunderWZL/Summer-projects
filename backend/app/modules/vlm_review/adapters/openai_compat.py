@@ -259,7 +259,7 @@ class OpenAICompatibleVlmAdapter:
 
     def _provider_options(self) -> dict[str, Any]:
         if self._model.lower().startswith("qwen"):
-            return {"extra_body": {"enable_thinking": False}}
+            return {"extra_body": {"enable_thinking": True}}
         return {}
 
     @staticmethod

@@ -610,6 +610,10 @@
   * 完成：明确安全帽、防护手套和安全背心的佩戴判定边界，荧光色普通上衣、安全带和工具带不再作为安全背心依据。
   * 实现：要求模型忽略检测框及类别文字，至少两帧清楚显示正确佩戴才可排除违规；目标部位过小、模糊、遮挡或无法跨帧确认时返回不确定。
   * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review/test_openai_compat_adapter.py -q`，7 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-prompt-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
+* 21:05 `fix(vlm): 开启千问视觉思考模式`
+  * 完成：真实千问 VLM 请求开启思考模式，使 PPE 复核能够执行更充分的视觉推理。
+  * 实现：将千问兼容请求的 `enable_thinking` 固定为 `true`，其他模型请求参数与输出解析保持不变。
+  * 验证：`cd backend && .venv/bin/pytest tests/modules/vlm_review -q`，48 项通过；`cd backend && .venv/bin/python -m compileall -q app`，通过；`cd backend && .venv/bin/python -m build --wheel --no-isolation --outdir /tmp/siteppe-vlm-thinking-build`，构建成功；后端未配置独立 lint 和类型检查，未运行。
 
 ### 问题与处理
 
