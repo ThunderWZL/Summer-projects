@@ -143,6 +143,10 @@ button:disabled {
   background: var(--surface);
 }
 
+.topbar-action {
+  margin-left: auto;
+}
+
 .monitor-page {
   width: min(1600px, 100%);
   margin-inline: auto;

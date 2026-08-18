@@ -573,11 +573,16 @@
   * 完成：新增六路 CAM 场地配置弹窗，可选择中文预制场地，或填写自定义场地名称并勾选安全帽、防护手套和安全背心要求；分析期间表单不可保存。
   * 实现：增加类型化场地配置读取与更新客户端；通道列表和编辑表单分离，使用现有监控台颜色、间距与响应式布局，并提供键盘可访问的原生表单控件及明确的保存状态。
   * 验证：`cd frontend && npm test -- --run src/features/monitor/WorksiteConfigurationDialog.test.tsx src/shared/api.test.ts`，2 个测试文件共 7 项通过；`cd frontend && npm run build`，构建成功；项目未配置独立 lint，未运行。
+* 13:14 `feat(monitor): 接入六路场地规则配置`
+  * 完成：监控台顶部以配置按钮替换角色切换，案件中心保留角色选择；六路监控卡片以中文展示当前场地和 PPE 要求，保存配置后立即更新。
+  * 实现：监控页并行加载视频与运行期场地配置，通过配置接口写回指定 CAM；分析启动或运行期间禁止保存配置，避免当前推理规则中途变化。
+  * 验证：`cd frontend && npm test`，13 个测试文件共 56 项通过；`cd frontend && npm test -- --run src/App.test.tsx src/features/monitor/ChannelCard.test.tsx src/features/monitor/MonitorPage.test.tsx`，3 个测试文件共 17 项通过；`cd frontend && npm run build`，构建成功；`PYTHONPATH=backend PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 backend/.venv/bin/python -m pytest backend/tests -q`，382 项通过、1 项跳过、1 项因既有相对路径依赖运行目录而失败；`cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/modules/requirements_rag/test_acceptance_regressions.py::test_shipped_manifest_loads_with_real_provenance_metadata -q`，该项在后端目录重跑通过；项目未配置独立 lint，未运行。
 
 ### 问题与处理
 
 * 当前环境未提供可用的浏览器调试接口，未执行真实浏览器播放验收；已通过组件测试校验自动播放、循环、静音与内联播放属性。
 * 本地 `backend/.env` 中的真实 DeepSeek 密钥和模型覆盖了默认值，导致两项既有默认配置测试失败；本切片未修改本地配置，排除这两项后相关规则、接口和调查解析测试全部通过。
+* 后端完整测试从仓库根目录运行时，一项既有 RAG 验收测试使用了相对 `app/` 路径而失败；切换到 `backend` 目录单独重跑后通过。
 
 ### 后续计划
 

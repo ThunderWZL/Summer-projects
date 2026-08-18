@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import {
-  getDemoContext,
+  getWorksiteConfigurations,
   listDemoVideos,
   startAnalysisSession,
-  type DemoContext,
+  updateCameraWorksite,
   type DemoVideo,
+  type WorksiteConfigurations,
+  type WorksiteConfigurationUpdate,
 } from "../../shared/api";
 import {
   connectAnalysisEvents,
@@ -15,6 +17,7 @@ import {
 import { ChannelCard } from "./ChannelCard";
 import { createInitialMonitorState, monitorReducer } from "./monitorState";
 import { SwitchChannelDialog } from "./SwitchChannelDialog";
+import { WorksiteConfigurationDialog } from "./WorksiteConfigurationDialog";
 
 type TransportFailureSource = "websocket" | "mjpeg" | "protocol";
 
@@ -22,28 +25,18 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function taskForVideo(video: DemoVideo, context: DemoContext): string {
-  const scenarioTime = Date.parse(video.scenario_started_at);
-  const permit = context.work_permits.find((candidate) => {
-    if (candidate.zone_id !== video.zone_id || candidate.status !== "ACTIVE") {
-      return false;
-    }
-    const startsAt = Date.parse(candidate.starts_at);
-    const endsAt = Date.parse(candidate.ends_at);
-    return (
-      Number.isFinite(scenarioTime) &&
-      Number.isFinite(startsAt) &&
-      Number.isFinite(endsAt) &&
-      startsAt <= scenarioTime &&
-      scenarioTime <= endsAt
-    );
-  });
-  return permit?.task_code ?? "任务待确认";
+interface MonitorPageProps {
+  configurationOpen?: boolean;
+  onCloseConfiguration?(): void;
 }
 
-export function MonitorPage() {
+export function MonitorPage({
+  configurationOpen = false,
+  onCloseConfiguration = () => undefined,
+}: MonitorPageProps = {}) {
   const [videos, setVideos] = useState<DemoVideo[] | null>(null);
-  const [context, setContext] = useState<DemoContext | null>(null);
+  const [configurations, setConfigurations] =
+    useState<WorksiteConfigurations | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [pendingVideo, setPendingVideo] = useState<DemoVideo | null>(null);
   const [startingVideoId, setStartingVideoId] = useState<string | null>(null);
@@ -65,18 +58,18 @@ export function MonitorPage() {
     loadControllerRef.current = controller;
     setLoadError(false);
     setVideos(null);
-    setContext(null);
+    setConfigurations(null);
 
     try {
-      const [nextVideos, nextContext] = await Promise.all([
+      const [nextVideos, nextConfigurations] = await Promise.all([
         listDemoVideos(controller.signal),
-        getDemoContext(controller.signal),
+        getWorksiteConfigurations(controller.signal),
       ]);
       if (!mountedRef.current || controller.signal.aborted) {
         return;
       }
       setVideos(nextVideos);
-      setContext(nextContext);
+      setConfigurations(nextConfigurations);
     } catch (error) {
       if (
         mountedRef.current &&
@@ -229,7 +222,7 @@ export function MonitorPage() {
     );
   }
 
-  if (!videos || !context) {
+  if (!videos || !configurations) {
     return (
       <section className="page-state" role="status">
         <span>加载六路监控…</span>
@@ -247,6 +240,24 @@ export function MonitorPage() {
   const retryVideo = videos.find(
     (video) => video.video_id === state.failure?.videoId,
   );
+
+  const saveWorksiteConfiguration = async (
+    cameraId: string,
+    update: WorksiteConfigurationUpdate,
+  ) => {
+    const saved = await updateCameraWorksite(cameraId, update);
+    if (!mountedRef.current) return;
+    setConfigurations((current) =>
+      current
+        ? {
+            ...current,
+            cameras: current.cameras.map((configuration) =>
+              configuration.camera_id === cameraId ? saved : configuration,
+            ),
+          }
+        : current,
+    );
+  };
 
   return (
     <section className="monitor-page" aria-label="监控台">
@@ -274,11 +285,14 @@ export function MonitorPage() {
       <div className="video-wall">
         {videos.map((video) => {
           const active = state.activeSession?.video_id === video.video_id;
+          const worksiteConfiguration = configurations.cameras.find(
+            (configuration) => configuration.camera_id === video.camera_id,
+          );
           return (
             <ChannelCard
               key={video.video_id}
               video={video}
-              configuredTask={taskForVideo(video, context)}
+              worksiteConfiguration={worksiteConfiguration}
               active={active}
               starting={startingVideoId === video.video_id}
               disabled={startingVideoId !== null}
@@ -298,6 +312,15 @@ export function MonitorPage() {
           );
         })}
       </div>
+
+      <WorksiteConfigurationDialog
+        open={configurationOpen}
+        videos={videos}
+        configurations={configurations}
+        disabled={state.activeSession !== null || startingVideoId !== null}
+        onClose={onCloseConfiguration}
+        onSave={saveWorksiteConfiguration}
+      />
 
       <SwitchChannelDialog
         open={pendingVideo !== null}
